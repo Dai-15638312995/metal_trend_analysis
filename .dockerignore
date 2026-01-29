@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 虚拟环境
+venv/
+ENV/
+env/
+.venv
+
+# 环境变量（敏感信息）
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 项目数据（运行时生成，不需要打包）
+data/
+output/
+
+# 日志
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Docker相关（不需要打包到镜像）
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 文档（可选）
+docs/
+*.md
+
+# 测试
+tests/
+test/
+.pytest_cache/
+.coverage
+
+# 临时文件
+*.tmp
+*.bak
+*.swp

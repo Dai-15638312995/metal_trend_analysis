@@ -406,6 +406,111 @@ ls -lt output/reports/ | head -5
 cat output/reports/report_XAUUSD_20260127_101523.md
 ```
 
+## Docker 部署（推荐）
+
+MetalTrend AI 支持使用 Docker 进行快速部署，支持定时任务自动执行分析。
+
+### 快速开始
+
+```bash
+# 1. 构建并启动容器
+docker-compose up -d
+
+# 2. 查看日志
+docker-compose logs -f
+
+# 3. 停止容器
+docker-compose down
+```
+
+### 配置定时任务
+
+使用 `CRON_SCHEDULE` 环境变量设置定时执行分析（Cron 格式）：
+
+```bash
+# 每天早上 9 点执行分析
+docker-compose run -e CRON_SCHEDULE="0 9 * * *" metal-trend-analysis
+
+# 每小时执行一次分析
+docker-compose run -e CRON_SCHEDULE="0 * * * *" metal-trend-analysis
+
+# 工作日早上 9 点执行分析
+docker-compose run -e CRON_SCHEDULE="0 9 * * 1-5" metal-trend-analysis
+
+# 每 30 分钟执行一次分析
+docker-compose run -e CRON_SCHEDULE="*/30 * * * *" metal-trend-analysis
+```
+
+### 自定义配置参数
+
+在 `docker-compose.yml` 或通过环境变量配置：
+
+```bash
+# 指定分析品种（gold/silver/all）
+docker-compose run -e INSTRUMENT=gold metal-trend-analysis
+
+# 指定时间周期（1m, 5m 等）
+docker-compose run -e TIMEFRAME=4h metal-trend-analysis
+
+# 自定义时区
+docker-compose run -e TZ=America/New_York metal-trend-analysis
+```
+
+### Cron 格式说明
+
+```
+┌───────────── 分钟 (0 - 59)
+│ ┌───────────── 小时 (0 - 23)
+│ │ ┌───────────── 日 (1 - 31)
+│ │ │ ┌───────────── 月 (1 - 12)
+│ │ │ │ ┌───────────── 星期 (0 - 6) (0=周日)
+│ │ │ │ │
+* * * * * 命令
+```
+
+**示例**:
+- `0 9 * * *` - 每天 9:00
+- `0 */2 * * *` - 每 2 小时
+- `*/30 * * * *` - 每 30 分钟
+- `0 9 * * 1-5` - 工作日 9:00
+- `0 9,18 * * *` - 每天 9:00 和 18:00
+
+### 数据持久化
+
+容器会自动挂载以下目录，数据会持久化到宿主机：
+
+- `./config` - 配置文件目录
+- `./data` - 数据缓存目录
+- `./output` - 输出目录（报告、日志）
+
+### 查看输出
+
+```bash
+# 查看容器日志
+docker-compose logs -f
+
+# 查看生成的报告
+ls -lt output/reports/
+
+# 查看分析日志
+tail -f output/logs/app.log
+
+# 查看定时任务日志
+tail -f output/logs/cron.log
+```
+
+### 手动执行分析
+
+如果不使用定时任务，可以手动执行一次分析：
+
+```bash
+# 方式 1：不设置 CRON_SCHEDULE
+docker-compose run --rm -e CRON_SCHEDULE= metal-trend-analysis
+
+# 方式 2：直接运行 Python 脚本
+docker-compose run --rm metal-trend-analysis python src/main.py --instrument all
+```
+
 ## 下一步
 
 配置完成后，你可以：

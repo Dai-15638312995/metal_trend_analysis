@@ -123,7 +123,39 @@ python src/main.py --instrument silver --timeframe 1h
 
 After analysis is complete, reports will be saved in the `output/reports/` directory and pushed to your configured Feishu channel.
 
----
+## 🐳 Docker Deployment
+
+MetalTrend AI provides Docker deployment with one-click startup and scheduled execution.
+
+### Quick Start
+
+```bash
+# 1. Copy environment variables
+cp .env.example .env
+
+# 2. Edit .env file with your API keys
+vim .env
+
+# 3. Start container
+docker-compose up -d
+
+# 4. View logs
+docker-compose logs -f
+```
+
+### Scheduled Execution
+
+Configure scheduled analysis via `CRON_SCHEDULE` environment variable:
+
+```bash
+# Run daily at 9 AM
+docker-compose run -e CRON_SCHEDULE="0 9 * * *" metal-trend-analysis
+
+# Run every hour
+docker-compose run -e CRON_SCHEDULE="0 * * * *" metal-trend-analysis
+```
+
+For detailed instructions, see [SETUP_EN.md](SETUP_EN.md#docker-deployment-recommended)
 
 ## 📰 News Sentiment Analysis Feature
 
@@ -255,7 +287,10 @@ MetalTrend AI adopts a modular architecture design with clear responsibilities f
 - [x] Feishu notification functionality
 - [x] News fetching and sentiment analysis (integrated verified sources: Bloomberg, CNBC, Phoenix Finance, etc.)
 
-### 🚧 In Progress - v1.1
+### ✅ Completed - v1.1
+- [x] Docker one-click deployment (with cron support, default timezone Asia/Shanghai)
+
+### 📅 Planned - v1.2
 - [ ] Docker one-click deployment
 - [ ] Configuration wizard
 - [ ] Error handling optimization

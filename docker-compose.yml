@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  metal-trend-analysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: metal-trend-analysis
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      # 挂载配置文件
+      - ./config:/app/config
+      # 挂载数据目录（缓存、日志、报告）
+      - ./data:/app/data
+      - ./output:/app/output
+    env_file:
+      - .env
+    # 定时任务配置（使用 cron 格式）
+    # 默认：每天早上9点执行一次分析
+    command: /app/docker/entrypoint.sh
+    environment:
+      - TZ=Asia/Shanghai
+      - CRON_SCHEDULE=${CRON_SCHEDULE:-0 9 * * *}  # 每天早上9点执行
+      - INSTRUMENT=${INSTRUMENT:-all}
+      - TIMEFRAME=${TIMEFRAME:-}
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/output/logs/app.log"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# 可选：使用数据卷持久化
+volumes:
+  metal-trend-data:
+    driver: local
+  metal-trend-output:
+    driver: local

@@ -119,6 +119,40 @@ python src/main.py --instrument silver --timeframe 1h
 
 分析完成后，报告将保存在 `output/reports/` 目录下，同时会推送到您配置的飞书频道。
 
+## 🐳 Docker 部署
+
+MetalTrend AI 提供了 Docker 部署方案，支持一键启动和定时任务。
+
+### 快速启动
+
+```bash
+# 1. 复制环境变量配置
+cp .env.example .env
+
+# 2. 编辑 .env 文件，填入 API 密钥
+vim .env
+
+# 3. 启动容器
+docker-compose up -d
+
+# 4. 查看日志
+docker-compose logs -f
+```
+
+### 定时执行
+
+通过环境变量 `CRON_SCHEDULE` 配置定时分析：
+
+```bash
+# 每天早上 9 点执行
+docker-compose run -e CRON_SCHEDULE="0 9 * * *" metal-trend-analysis
+
+# 每小时执行一次
+docker-compose run -e CRON_SCHEDULE="0 * * * *" metal-trend-analysis
+```
+
+详细说明请参考 [SETUP.md](SETUP.md#docker-部署推荐)
+
 ## 📰 新闻情感分析功能
 
 MetalTrend AI现在集成了强大的新闻情感分析功能，可以从多个权威新闻源抓取相关新闻，并自动分析市场情绪。
@@ -247,7 +281,10 @@ MetalTrend AI 采用模块化架构设计，各组件职责清晰，易于扩展
 - [x] 飞书通知功能
 - [x] 新闻抓取与情感分析（集成Bloomberg、CNBC、凤凰网财经等已验证源）
 
-### 🚧 进行中 - v1.1
+### ✅ 已完成 - v1.1
+- [x] Docker一键部署（支持定时任务，默认时区Asia/Shanghai）
+
+### 🚧 计划中 - v1.2
 - [ ] Docker一键部署
 - [ ] 配置向导
 - [ ] 错误处理优化

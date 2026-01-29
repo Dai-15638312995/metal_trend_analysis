@@ -354,6 +354,111 @@ ls -lt output/reports/ | head -5
 cat output/reports/report_XAUUSD_20260127_101523.md
 ```
 
+## Docker Deployment (Recommended)
+
+MetalTrend AI supports Docker for quick deployment with scheduled execution.
+
+### Quick Start
+
+```bash
+# 1. Build and start container
+docker-compose up -d
+
+# 2. View logs
+docker-compose logs -f
+
+# 3. Stop container
+docker-compose down
+```
+
+### Configure Scheduled Tasks
+
+Use `CRON_SCHEDULE` environment variable to set up automated analysis (Cron format):
+
+```bash
+# Run analysis at 9 AM daily
+docker-compose run -e CRON_SCHEDULE="0 9 * * *" metal-trend-analysis
+
+# Run analysis every hour
+docker-compose run -e CRON_SCHEDULE="0 * * * *" metal-trend-analysis
+
+# Run analysis at 9 AM on weekdays
+docker-compose run -e CRON_SCHEDULE="0 9 * * 1-5" metal-trend-analysis
+
+# Run analysis every 30 minutes
+docker-compose run -e CRON_SCHEDULE="*/30 * * * *" metal-trend-analysis
+```
+
+### Custom Configuration Parameters
+
+Configure via `docker-compose.yml` or environment variables:
+
+```bash
+# Specify instrument (gold/silver/all)
+docker-compose run -e INSTRUMENT=gold metal-trend-analysis
+
+# Specify timeframe (1m, 5m, etc.)
+docker-compose run -e TIMEFRAME=4h metal-trend-analysis
+
+# Custom timezone
+docker-compose run -e TZ=America/New_York metal-trend-analysis
+```
+
+### Cron Format Explanation
+
+```
+┌───────────── minute (0 - 59)
+│ ┌───────────── hour (0 - 23)
+│ │ ┌───────────── day of month (1 - 31)
+│ │ │ ┌───────────── month (1 - 12)
+│ │ │ │ ┌───────────── day of week (0 - 6) (0=Sunday)
+│ │ │ │ │
+* * * * * command
+```
+
+**Examples**:
+- `0 9 * * *` - Daily at 9:00
+- `0 */2 * * *` - Every 2 hours
+- `*/30 * * * *` - Every 30 minutes
+- `0 9 * * 1-5` - Weekdays at 9:00
+- `0 9,18 * * *` - Daily at 9:00 and 18:00
+
+### Data Persistence
+
+The container automatically mounts the following directories for data persistence:
+
+- `./config` - Configuration files
+- `./data` - Data cache directory
+- `./output` - Output directory (reports, logs)
+
+### View Output
+
+```bash
+# View container logs
+docker-compose logs -f
+
+# View generated reports
+ls -lt output/reports/
+
+# View analysis logs
+tail -f output/logs/app.log
+
+# View cron job logs
+tail -f output/logs/cron.log
+```
+
+### Manual Execution
+
+For one-time analysis without scheduling:
+
+```bash
+# Method 1: Don't set CRON_SCHEDULE
+docker-compose run --rm -e CRON_SCHEDULE= metal-trend-analysis
+
+# Method 2: Run Python script directly
+docker-compose run --rm metal-trend-analysis python src/main.py --instrument all
+```
+
 ## Next Steps
 
 After configuration, you can:
