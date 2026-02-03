@@ -163,23 +163,33 @@ llm:
 FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx
 ```
 
-If `FEISHU_WEBHOOK_URL` is empty, no notifications will be sent.
+If `FEISHU_WEBHOOK_URL` is empty, no Feishu notifications will be sent.
+
+### DingTalk Notifications (Optional)
+
+1. DingTalk group → Group settings → Smart Group Assistant → Add custom bot
+2. Copy the Webhook URL
+3. Add to `.env`:
+
+```env
+DINGTALK_WEBHOOK_URL=https://oapi.dingtalk.com/robot/send?access_token=xxxxxxxx
+```
+
+In `config/config.yaml`, enable the corresponding notification channel:
+
+```yaml
+notification:
+  enabled: true
+  channels:
+    feishu:
+      enabled: true
+      webhook_url: "${FEISHU_WEBHOOK_URL}"
+    dingtalk:
+      enabled: false  # Enable DingTalk
+      webhook_url: "${DINGTALK_WEBHOOK_URL}"
+```
 
 ### News Keywords Configuration
-
-The news fetching module uses keywords from `config/keywords.txt` to filter relevant news. You can edit this file:
-
-```bash
-# Edit keywords file
-vim config/keywords.txt
-```
-
-File format (one keyword per line):
-```
-# Precious metals related keywords
-gold
-silver
-precious metals
 黄金
 白银
 贵金属
@@ -195,6 +205,13 @@ XAGUSD
 - Empty lines are automatically ignored
 - Keywords are case-insensitive
 - Include both English and Chinese keywords for better coverage
+
+### Notification Delivery Effects
+
+- 📊 Daily summary report (Gold/Silver overview + Gold/Silver ratio)
+- 📈 Single instrument detailed report (quotes, technical indicators, candlestick patterns, news sentiment analysis, AI analysis)
+- 🔔 Multi-channel notification support: Feishu, DingTalk
+- 🔔 Supports card/Markdown message format for mobile-friendly reading
 
 ### News Sources Configuration
 

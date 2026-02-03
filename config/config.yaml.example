@@ -97,6 +97,10 @@ notification:
       enabled: true
       webhook_url: "${FEISHU_WEBHOOK_URL}"  # 从环境变量读取，留空则不推送
       timeout: 30
+    dingtalk:
+      enabled: false  # 钉钉推送，默认关闭
+      webhook_url: "${DINGTALK_WEBHOOK_URL}"  # 从环境变量读取
+      timeout: 30
   triggers:
     on_analysis_complete: true  # 分析完成后推送
     on_error: false  # 出错时推送

@@ -20,6 +20,7 @@ from src.analyzers.news_sentiment import NewsSentimentAnalyzer
 from src.llm.analyzer import LLMAnalyzer
 from src.reporting.generator import ReportGenerator
 from src.notification.feishu import FeishuNotifier
+from src.notification.dingtalk import DingTalkNotifier
 
 
 def main():
@@ -127,10 +128,13 @@ def main():
         else:
             logger.info("News fetching is disabled in configuration")
 
-        # Feishu notifier (飞书推送)
+        # Feishu and DingTalk notifiers (飞书和钉钉推送)
         notification_config = config.get('notification', {})
         feishu_notifier = None
+        dingtalk_notifier = None
+
         if notification_config.get('enabled', False):
+            # Feishu notifier
             feishu_config = notification_config.get('channels', {}).get('feishu', {})
             if feishu_config.get('enabled', False):
                 feishu_webhook = feishu_config.get('webhook_url', '')
@@ -141,8 +145,22 @@ def main():
                 if feishu_notifier.is_available():
                     logger.info("Feishu notifier initialized successfully")
                 else:
-                    logger.warning("Feishu webhook URL not configured, notifications disabled")
+                    logger.warning("Feishu webhook URL not configured, Feishu notifications disabled")
                     feishu_notifier = None
+
+            # DingTalk notifier
+            dingtalk_config = notification_config.get('channels', {}).get('dingtalk', {})
+            if dingtalk_config.get('enabled', False):
+                dingtalk_webhook = dingtalk_config.get('webhook_url', '')
+                dingtalk_notifier = DingTalkNotifier(
+                    webhook_url=dingtalk_webhook,
+                    timeout=dingtalk_config.get('timeout', 30)
+                )
+                if dingtalk_notifier.is_available():
+                    logger.info("DingTalk notifier initialized successfully")
+                else:
+                    logger.warning("DingTalk webhook URL not configured, DingTalk notifications disabled")
+                    dingtalk_notifier = None
 
         # 3. Determine instruments to analyze
         instruments_config = config.get('instruments', {})
@@ -313,11 +331,10 @@ def main():
                 else:
                     logger.info("Insight: Gold-silver ratio is within normal range")
 
-        # 7. Send Feishu notifications (飞书推送)
-        # 只有当 feishu_notifier 可用（即 webhook_url 已配置）时才发送
-        if feishu_notifier and analysis_results:
-            logger.info("")
-            logger.info("Sending Feishu notifications...")
+        # 7. Send notifications (飞书和钉钉推送)
+        # 只有当至少一个通知器可用时才发送
+        if (feishu_notifier and analysis_results) or (dingtalk_notifier and analysis_results):
+            logger.info("Sending notifications...")
 
             # 准备推送数据
             reports_for_push = []
@@ -365,6 +382,34 @@ def main():
                         logger.warning(f"Failed to send Feishu report for {report_data['symbol']}")
                 except Exception as e:
                     logger.error(f"Error sending Feishu report for {report_data['symbol']}: {e}")
+
+            # 发送钉钉通知
+            if dingtalk_notifier and dingtalk_notifier.is_available():
+                # 发送每日汇总报告
+                try:
+                    if dingtalk_notifier.send_daily_summary(reports_for_push, gold_silver_ratio_value):
+                        logger.info("DingTalk daily summary sent successfully")
+                    else:
+                        logger.warning("Failed to send DingTalk daily summary")
+                except Exception as e:
+                    logger.error(f"Error sending DingTalk notification: {e}")
+
+                # 发送各品种详细报告（可选）
+                for report_data in reports_for_push:
+                    try:
+                        if dingtalk_notifier.send_market_report(
+                            symbol_name=report_data['symbol_name'],
+                            symbol=report_data['symbol'],
+                            quote_data=report_data['quote_data'],
+                            technical_data=report_data['technical_data'],
+                            patterns=report_data.get('patterns'),
+                            llm_analysis=report_data.get('llm_analysis')
+                        ):
+                            logger.info(f"DingTalk report for {report_data['symbol']} sent successfully")
+                        else:
+                            logger.warning(f"Failed to send DingTalk report for {report_data['symbol']}")
+                    except Exception as e:
+                        logger.error(f"Error sending DingTalk report: {e}")
 
         # 8. Complete
         logger.info("")

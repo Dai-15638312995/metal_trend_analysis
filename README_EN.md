@@ -27,7 +27,7 @@
 - **📡 Real-Time Data**: Connects to iTick API for millisecond-level market updates, ensuring data freshness
 - **📰 News Sentiment Analysis**: Integrates Bloomberg, CNBC, Phoenix Finance and other news sources for intelligent market sentiment analysis
 - **🕯️ Candlestick Pattern Recognition**: Intelligently identifies 10+ classic candlestick patterns (Doji, Hammer, Engulfing, etc.)
-- **📱 Multi-Channel Notifications**: Supports Feishu, email, and other notification methods to ensure timely information delivery
+- **📱 Multi-Channel Notifications**: Supports Feishu, DingTalk, and other notification methods to ensure timely information delivery
 - **⚙️ Highly Configurable**: All parameters (API keys, model selection, notification channels, etc.) are configured via YAML files for flexibility
 - **🎯 Intelligent Trend Analysis**: Combines technical and fundamental analysis to automatically determine market trends (bullish/bearish/ranging)
 - **📍 Key Level Identification**: Automatically calculates and identifies important support and resistance levels
@@ -105,6 +105,8 @@ You need to configure the following key information:
 - `llm.api_key`: Your LLM provider's API key
 - `llm.base_url` (optional): Configure this if you use a proxy or self-hosted LLM
 - `llm.model`: Specify the model name, e.g., `gpt-4-turbo`
+- `feishu.webhook_url`: Feishu bot webhook URL
+- `dingtalk.webhook_url`: DingTalk bot webhook URL (optional)
 - `feishu.webhook_url`: Feishu bot's webhook URL
 - `news.sources`: News source configuration (includes verified sources: Bloomberg, CNBC, Phoenix Finance, etc.)
 

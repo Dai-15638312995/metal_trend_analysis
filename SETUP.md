@@ -71,6 +71,9 @@ LLM_MODEL_NAME=gpt-4o  # 或 deepseek-chat
 
 # 可选：飞书推送（留空则不启用）
 FEISHU_WEBHOOK_URL=
+
+# 可选：钉钉推送（留空则不启用）
+DINGTALK_WEBHOOK_URL=
 ```
 
 #### 方法 B: 直接编辑配置文件
@@ -158,18 +161,26 @@ llm:
 FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx
 ```
 
-若 `FEISHU_WEBHOOK_URL` 为空，则不会发送推送。
+若 `FEISHU_WEBHOOK_URL` 为空，则不会发送飞书推送。
+
+```yaml
+notification:
+  enabled: true
   channels:
     feishu:
       enabled: true
-      webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx"
+      webhook_url: "${FEISHU_WEBHOOK_URL}"
+    dingtalk:
+      enabled: false  # 启用钉钉推送
+      webhook_url: "${DINGTALK_WEBHOOK_URL}"
 ```
 
 #### 推送效果
 
 - 📊 每日汇总报告（黄金白银概览 + 黄金白银比）
 - 📈 单品种详细报告（行情、技术指标、K线形态、新闻情感分析、AI分析）
-- 🔔 支持卡片消息格式，移动端阅读友好
+- 🔔 支持多渠道推送：飞书、钉钉
+- 🔔 支持卡片/Markdown消息格式，移动端阅读友好
 
 ### 新闻关键词配置
 
