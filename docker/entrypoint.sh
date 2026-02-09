@@ -19,7 +19,11 @@ echo "======================================"
 echo "Timezone: $TZ"
 echo "Instrument: ${INSTRUMENT:-all}"
 echo "Timeframe: ${TIMEFRAME:-default}"
-echo "News enabled: ${NEWS_ENABLED:-true}"
+echo "Feishu enabled: $([ -n "$FEISHU_WEBHOOK_URL" ] && echo 'true' || echo 'false')"
+echo "DingTalk enabled: $([ -n "$DINGTALK_WEBHOOK_URL" ] && echo 'true' || echo 'false')"
+echo "Slack enabled: $([ -n "$SLACK_WEBHOOK_URL" ] && echo 'true' || echo 'false')"
+echo "Telegram enabled: $([ -n "$TELEGRAM_BOT_TOKEN" ] && echo 'true' || echo 'false')"
+echo "Email enabled: $([ -n "$EMAIL_FROM" ] && echo 'true' || echo 'false')"
 echo "======================================"
 
 # 如果设置了定时任务，使用 cron

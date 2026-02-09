@@ -116,7 +116,7 @@ class ConfigLoader:
         获取配置项
 
         Args:
-            key: 配置键（支持点号分隔，如 'api.itick.token'）
+            key: 配置键（支持点号分隔，如 'api.stooq.base_url'）
             default: 默认值
 
         Returns:

@@ -24,10 +24,10 @@
 
 - **🤖 AI-Driven Analysis**: Integrates GPT-4 and other large language models to generate professional market analysis and natural language reports
 - **📊 Professional Technical Analysis**: Automatically calculates key technical indicators including MA, MACD, RSI, Bollinger Bands, and more
-- **📡 Real-Time Data**: Connects to iTick API for millisecond-level market updates, ensuring data freshness
+- **📡 Free Market Data**: Uses Stooq free daily data with weekly/monthly resampling
 - **📰 News Sentiment Analysis**: Integrates Bloomberg, CNBC, Phoenix Finance and other news sources for intelligent market sentiment analysis
 - **🕯️ Candlestick Pattern Recognition**: Intelligently identifies 10+ classic candlestick patterns (Doji, Hammer, Engulfing, etc.)
-- **📱 Multi-Channel Notifications**: Supports Feishu, DingTalk, and other notification methods to ensure timely information delivery
+- **📱 Multi-Channel Notifications**: Supports Feishu, DingTalk, Slack, Telegram, and Email. Channels auto-enable based on environment variables
 - **⚙️ Highly Configurable**: All parameters (API keys, model selection, notification channels, etc.) are configured via YAML files for flexibility
 - **🎯 Intelligent Trend Analysis**: Combines technical and fundamental analysis to automatically determine market trends (bullish/bearish/ranging)
 - **📍 Key Level Identification**: Automatically calculates and identifies important support and resistance levels
@@ -61,7 +61,10 @@ source venv/bin/activate  # macOS/Linux
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Run analysis
+# 4. Copy environment file
+cp .env.example .env
+
+# 5. Run analysis
 python src/main.py
 ```
 
@@ -98,17 +101,33 @@ cp config/config.yaml.example config/config.yaml
 
 # 2. Edit config/config.yaml
 #    Fill in your API Keys and Webhook URL
+
+# 3. Edit .env and fill in environment variables
+#    e.g., LLM_API_KEY
+
+# 4. (Optional) Install visualization dependencies if you need charts
+# pip install matplotlib plotly
 ```
 
 You need to configure the following key information:
-- `itick.token`: iTick API access token
+- `api.stooq`: Stooq data source settings (no API key required)
 - `llm.api_key`: Your LLM provider's API key
 - `llm.base_url` (optional): Configure this if you use a proxy or self-hosted LLM
 - `llm.model`: Specify the model name, e.g., `gpt-4-turbo`
 - `feishu.webhook_url`: Feishu bot webhook URL
 - `dingtalk.webhook_url`: DingTalk bot webhook URL (optional)
-- `feishu.webhook_url`: Feishu bot's webhook URL
+- `slack.webhook_url`: Slack webhook URL (optional)
+- `telegram.bot_token` / `telegram.chat_id`: Telegram bot credentials (optional)
+- `email.from` / `email.password` / `email.to`: Email notification credentials (optional)
 - `news.sources`: News source configuration (includes verified sources: Bloomberg, CNBC, Phoenix Finance, etc.)
+
+Example `.env` (for reference only, never commit real secrets):
+
+```env
+LLM_API_KEY=your_llm_api_key
+LLM_MODEL_NAME=gpt-4o
+FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxx
+```
 
 ### 4. Run Analysis
 
@@ -120,7 +139,7 @@ python src/main.py
 python src/main.py --instrument gold
 
 # Analyze only silver with 1-hour timeframe
-python src/main.py --instrument silver --timeframe 1h
+python src/main.py --instrument silver --timeframe 1w
 ```
 
 After analysis is complete, reports will be saved in the `output/reports/` directory and pushed to your configured Feishu channel.
@@ -145,6 +164,18 @@ docker-compose up -d
 docker-compose logs -f
 ```
 
+> Tip: The container reads `config/config.yaml` by default. Make sure it exists and is configured.
+
+### One-shot Run (no schedule)
+
+```bash
+# Run once and exit
+docker-compose run --rm -e CRON_SCHEDULE= metal-trend-analysis
+
+# Run a specific instrument and timeframe
+docker-compose run --rm -e CRON_SCHEDULE= -e INSTRUMENT=gold -e TIMEFRAME=1h metal-trend-analysis
+```
+
 ### Scheduled Execution
 
 Configure scheduled analysis via `CRON_SCHEDULE` environment variable:
@@ -155,6 +186,22 @@ docker-compose run -e CRON_SCHEDULE="0 9 * * *" metal-trend-analysis
 
 # Run every hour
 docker-compose run -e CRON_SCHEDULE="0 * * * *" metal-trend-analysis
+
+# Custom timezone (optional)
+docker-compose run -e CRON_SCHEDULE="0 9 * * *" -e TZ=Asia/Shanghai metal-trend-analysis
+```
+
+### Common Operations
+
+```bash
+# Stop and remove containers
+docker-compose down
+
+# Rebuild images
+docker-compose up -d --build
+
+# Tail cron log (inside container)
+docker-compose exec metal-trend-analysis tail -f /app/output/logs/cron.log
 ```
 
 For detailed instructions, see [SETUP_EN.md](SETUP_EN.md#docker-deployment-recommended)
@@ -173,10 +220,15 @@ The system currently includes the following verified and available news sources:
 
 #### Chinese News Sources  
 - **Phoenix Finance** - Well-known Chinese financial media
+- **Wallstreetcn** - Major financial news platform
+- **CLS Telegraph** - Financial flashes and market telegraphs
+- **The Paper** - Comprehensive news coverage
+
+> Note: Some sources use **HTML parsing + Jina AI text proxy** to support sites without public RSS feeds.
 
 ### 🔧 How It Works
 
-1. **News Fetching**: System periodically fetches latest news from configured RSS feeds
+1. **News Fetching**: System periodically fetches latest news from configured RSS / HTML / API sources
 2. **Keyword Filtering**: Filters relevant news based on keywords in `config/keywords.txt`
 3. **Sentiment Analysis**: Uses built-in sentiment lexicon to analyze positive/negative words in each article
 4. **Comprehensive Analysis**: Combines with technical analysis for holistic market insights
@@ -200,6 +252,14 @@ news:
       type: "rss"
       url: "https://feeds.bloomberg.com/markets/news.rss"
       enabled: true
+    - name: "WallstreetCN"
+      type: "html"
+      url: "https://r.jina.ai/http://wallstreetcn.com/"
+      parser: "markdown_links"
+      link_contains:
+        - "wallstreetcn.com/articles"
+        - "wallstreetcn.com/livenews"
+      enabled: true
     # ... other news source configurations
 ```
 
@@ -211,36 +271,46 @@ News sentiment analysis results are integrated into the final Markdown reports:
 - **Representative Articles**: Displays most influential news articles
 - **LLM Deep Analysis**: Provides professional market insights combined with news content
 
+### ✅ News Source Test
+
+Use the test script to validate news source availability:
+
+```bash
+python scripts/test_news_sources.py
+```
+
+It reads `config/config.yaml` by default, falling back to `config/config.yaml.example` if missing.
+
 ## 📁 Project Structure
 
 ```
 metal_trend_analysis/
 ├── config/                # Configuration files
 │   ├── config.yaml        # Main configuration file
-│   └── keywords.txt       # (Not used yet) News keywords
+│   └── keywords.txt       # News keywords
 ├── data/                  # Raw data and cache
-├── docs/                  # Project documentation
+├── docker/                # Docker scripts
+├── docs/                  # Internal documentation
+│   └── internal/
 ├── images/                # Images for README and reports
 ├── output/                # Program output
 │   ├── logs/              # Log files
 │   └── reports/           # Generated Markdown reports
+├── scripts/               # Helper scripts
 ├── src/                   # Core source code
 │   ├── main.py            # 🚀 Main entry point
-│   ├── analyzers/         # 📊 Analysis modules (indicators, candlestick patterns, news sentiment)
-│   ├── data_fetchers/     # 📡 Data fetching modules (iTick, news fetching)
+│   ├── analyzers/         # 📊 Analysis modules (indicators, patterns, news sentiment)
+│   ├── data_fetchers/     # 📡 Data fetching modules (Stooq, news fetching)
 │   ├── llm/               # 🤖 LLM analysis modules
-│   ├── notification/      # 📢 Notification modules (Feishu)
+│   ├── notification/      # 📢 Notification modules (Feishu/DingTalk/Slack/Telegram/Email)
 │   ├── reporting/         # 📄 Report generation modules
 │   └── utils/             # 🛠️ Utility classes (config loading, logging)
-├── .github/               # GitHub configuration
-│   ├── workflows/         # GitHub Actions
-│   └── ISSUE_TEMPLATE/    # Issue templates
-├── examples/              # Example code
-├── tests/                 # Unit tests
+├── docker-compose.yml     # Docker Compose configuration
+├── Dockerfile             # Docker image build
 ├── .gitignore
 ├── LICENSE
-├── README.md              # This document (Chinese)
-├── README_EN.md           # This document (English)
+├── README.md              # Chinese README
+├── README_EN.md           # English README
 └── requirements.txt       # Python dependencies
 ```
 
@@ -251,7 +321,7 @@ MetalTrend AI adopts a modular architecture design with clear responsibilities f
 ### Core Module Descriptions
 
 1. **Data Fetching Module** (`data_fetchers/`)
-   - Connects to iTick API for real-time market data
+  - Uses Stooq free data for daily market prices
    - Supports multiple timeframe K-line data
    - Built-in data caching mechanism to reduce API calls
 
@@ -272,16 +342,16 @@ MetalTrend AI adopts a modular architecture design with clear responsibilities f
    - Supports multiple output formats
 
 5. **Notification System** (`notification/`)
-   - Feishu bot integration
-   - Email notifications (coming soon)
-   - Push failure retry mechanism
+  - Feishu / DingTalk / Slack / Telegram / Email notifications
+  - Auto-enabled via environment variables
+  - Push failure retry mechanism
 
 ---
 
 ## 🗺️ Roadmap
 
 ### ✅ Completed - v1.0
-- [x] iTick API data fetching
+- [x] Stooq free data fetching
 - [x] Technical indicator calculations (MA, MACD, RSI, Bollinger Bands)
 - [x] Candlestick pattern recognition (10+ classic patterns)
 - [x] LLM analysis integration (GPT-4 support)
@@ -293,18 +363,14 @@ MetalTrend AI adopts a modular architecture design with clear responsibilities f
 - [x] Docker one-click deployment (with cron support, default timezone Asia/Shanghai)
 
 ### 📅 Planned - v1.2
-- [ ] Docker one-click deployment
 - [ ] Configuration wizard
 - [ ] Error handling optimization
 - [ ] Unit test coverage
 - [ ] CI/CD pipeline
-
-### 📅 Planned - v1.2
 - [ ] Web interface (Streamlit)
 - [ ] More technical indicators (KDJ, OBV, etc.)
 - [ ] Custom trading strategy support
 - [ ] Historical data backtesting
-- [ ] Email notification support
 
 ### 🎯 Future Plans - v2.0
 - [ ] Machine learning model integration
@@ -321,10 +387,10 @@ MetalTrend AI adopts a modular architecture design with clear responsibilities f
 |----------|------------|
 | **Language** | Python 3.10+ |
 | **Data Processing** | Pandas, NumPy |
-| **Machine Learning** | OpenAI API, LangChain |
-| **Technical Analysis** | TA-Lib, Pandas TA |
-| **Visualization** | Matplotlib, Plotly |
-| **API** | iTick API, Feishu API |
+| **LLM/AI** | OpenAI-compatible APIs (OpenAI / DeepSeek / Qwen) |
+| **Technical Analysis** | In-house indicators (Pandas / NumPy) |
+| **Visualization** | Matplotlib, Plotly (optional) |
+| **API** | Stooq (free), Feishu / DingTalk / Slack / Telegram / Email |
 
 ---
 
@@ -352,16 +418,11 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## 📚 Related Resources
 
-- [Project Documentation](docs/)
-- [Example Code](examples/)
-- [API Documentation](docs/api/)
-- [FAQ](docs/faq.md)
+- [Internal Documentation](docs/internal/)
 
 ## 🌟 Community & Support
 
 - **GitHub Issues**: Report bugs or suggest new features
-- **GitHub Discussions**: Technical discussions and Q&A
-- **Discord Community**: Real-time communication and sharing (coming soon)
 
 ---
 

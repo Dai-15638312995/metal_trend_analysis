@@ -1,11 +1,11 @@
-# iTick API 配置
+# Stooq 免费数据源配置（仅日线，支持周/月线重采样）
 api:
-  itick:
-    base_url: "https://api.itick.org/forex"  # 外汇（包括贵金属）
-    token: "${ITICK_API_TOKEN}"  # 从环境变量读取，或直接填入你的 token
-    timeout: 30
+  stooq:
+    base_url: "https://stooq.com/q/d/l/"
+    timeout: 20
     retry: 3
     retry_delay: 2
+    default_kline_count: 200
 
 # LLM API 配置
 llm:
@@ -23,11 +23,13 @@ instruments:
     symbol: "XAUUSD"
     name: "国际现货黄金"
     region: "GB"
+    stooq_symbol: "xauusd"
     enabled: true
   silver:
     symbol: "XAGUSD"
     name: "国际现货白银"
     region: "GB"
+    stooq_symbol: "xagusd"
     enabled: true
 
 # 技术指标参数
@@ -78,6 +80,28 @@ news:
       url: "https://finance.ifeng.com/rss/index.xml"
       enabled: true
 
+    # 其他中文源（使用 HTML 解析 + Jina AI 文本代理，确保可拉取）
+    - name: "华尔街见闻"
+      type: "html"
+      url: "https://r.jina.ai/http://wallstreetcn.com/"
+      parser: "markdown_links"
+      link_contains:
+        - "wallstreetcn.com/articles"
+        - "wallstreetcn.com/livenews"
+      enabled: true
+    - name: "财联社电报"
+      type: "html"
+      url: "https://r.jina.ai/http://www.cls.cn/telegraph"
+      parser: "cls_telegraph"
+      enabled: true
+    - name: "澎湃新闻"
+      type: "html"
+      url: "https://r.jina.ai/http://www.thepaper.cn/list_25434"
+      parser: "markdown_links"
+      link_contains:
+        - "thepaper.cn/newsDetail"
+      enabled: true
+
     # 注意：以下源已验证不可用或需要特殊处理，已暂时禁用
     # - Reuters: DNS解析失败
     # - Financial Times: 404错误
@@ -90,20 +114,30 @@ news:
     # - 澎湃新闻: 302重定向
 
 # 通知推送配置
+# 通知是否启用仅取决于 .env 中是否配置了对应的 webhook URL / 配置信息
+# 不需要在这里配置 enabled 开关
 notification:
-  enabled: true
   channels:
     feishu:
-      enabled: true
       webhook_url: "${FEISHU_WEBHOOK_URL}"  # 从环境变量读取，留空则不推送
       timeout: 30
     dingtalk:
-      enabled: false  # 钉钉推送，默认关闭
-      webhook_url: "${DINGTALK_WEBHOOK_URL}"  # 从环境变量读取
+      webhook_url: "${DINGTALK_WEBHOOK_URL}"  # 从环境变量读取，留空则不推送
       timeout: 30
-  triggers:
-    on_analysis_complete: true  # 分析完成后推送
-    on_error: false  # 出错时推送
+    slack:
+      webhook_url: "${SLACK_WEBHOOK_URL}"  # 从环境变量读取，留空则不推送
+      timeout: 30
+    telegram:
+      bot_token: "${TELEGRAM_BOT_TOKEN}"  # 从环境变量读取，留空则不推送
+      chat_id: "${TELEGRAM_CHAT_ID}"  # 从环境变量读取，留空则不推送
+      timeout: 30
+    email:
+      from: "${EMAIL_FROM}"  # 从环境变量读取，留空则不推送
+      password: "${EMAIL_PASSWORD}"  # 从环境变量读取
+      to: "${EMAIL_TO}"  # 从环境变量读取，多个收件人用逗号分隔
+      smtp_server: "${EMAIL_SMTP_SERVER}"  # 可选，留空则自动检测
+      smtp_port: "${EMAIL_SMTP_PORT}"  # 可选，留空则自动检测
+      timeout: 30
 
 # 报告配置
 reports:

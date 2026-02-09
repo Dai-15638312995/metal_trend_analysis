@@ -40,13 +40,11 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 2. 获取 API 密钥
+### 2. 数据源说明
 
-#### iTick API（必需）
+#### Stooq（免费，无需 API Key）
 
-1. 访问 https://itick.org 注册账号
-2. 进入控制台获取 API Token
-3. 免费套餐：5次/分钟调用
+Stooq 提供公开的日线行情数据，支持周/月线重采样，无需注册或密钥。
 
 #### LLM API（必需）
 
@@ -64,7 +62,6 @@ vim .env
 填写配置：
 
 ```env
-ITICK_API_TOKEN=your_itick_token_here
 LLM_API_KEY=your_llm_api_key_here
 LLM_BASE_URL=https://api.deepseek.com/v1  # 可选
 LLM_MODEL_NAME=gpt-4o  # 或 deepseek-chat
@@ -84,8 +81,12 @@ vim config/config.yaml
 
 ```yaml
 api:
-  itick:
-    token: "your_itick_token_here"
+  stooq:
+    base_url: "https://stooq.com/q/d/l/"
+    timeout: 20
+    retry: 3
+    retry_delay: 2
+    default_kline_count: 200
 
 llm:
   api_key: "your_llm_api_key_here"
@@ -124,16 +125,18 @@ python src/main.py --debug
 
 ## ⚙️ 详细配置说明
 
-### iTick API 配置
+### Stooq 配置
 
-`config/itick_config.yaml`：
+`config/config.yaml`：
 
 ```yaml
-base_url: "https://api.itick.org/forex"
-token: ""  # 你的 API Token
-timeout: 30
-retry: 3
-retry_delay: 2
+api:
+  stooq:
+    base_url: "https://stooq.com/q/d/l/"
+    timeout: 20
+    retry: 3
+    retry_delay: 2
+    default_kline_count: 200
 ```
 
 ### LLM 配置
@@ -161,26 +164,94 @@ llm:
 FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx
 ```
 
-若 `FEISHU_WEBHOOK_URL` 为空，则不会发送飞书推送。
+**重要**：通知是否启用仅取决于 `.env` 中是否配置了对应的 webhook URL。只要配置了 `FEISHU_WEBHOOK_URL`，飞书通知就会自动启用。
 
-```yaml
-notification:
-  enabled: true
-  channels:
-    feishu:
-      enabled: true
-      webhook_url: "${FEISHU_WEBHOOK_URL}"
-    dingtalk:
-      enabled: false  # 启用钉钉推送
-      webhook_url: "${DINGTALK_WEBHOOK_URL}"
+### 钉钉推送配置（可选）
+
+1. 钉钉群 → 群设置 → 智能群助手 → 添加「自定义机器人」
+2. 复制 Webhook URL
+3. 写入 `.env`：
+
+```env
+DINGTALK_WEBHOOK_URL=https://oapi.dingtalk.com/robot/send?access_token=xxxxxxxx
 ```
 
-#### 推送效果
+**重要**：通知是否启用仅取决于 `.env` 中是否配置了对应的 webhook URL。只要配置了 `DINGTALK_WEBHOOK_URL`，钉钉通知就会自动启用。
 
-- 📊 每日汇总报告（黄金白银概览 + 黄金白银比）
-- 📈 单品种详细报告（行情、技术指标、K线形态、新闻情感分析、AI分析）
-- 🔔 支持多渠道推送：飞书、钉钉
-- 🔔 支持卡片/Markdown消息格式，移动端阅读友好
+### Slack 推送配置（可选）
+
+1. 访问 [Slack API](https://api.slack.com/apps)
+2. 点击 "Create New App" → "From scratch"
+3. 填写 App 名称并选择工作空间，点击 "Create App"
+4. 在 "Incoming Webhooks" 页面，启用 "Activate Incoming Webhooks"
+5. 点击 "Add New Webhook to Workspace"，选择频道并授权
+6. 复制 Webhook URL
+7. 写入 `.env`：
+
+```env
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXXXXXXX/XXXXXXXX/XXXXXXXX
+```
+
+**重要**：通知是否启用仅取决于 `.env` 中是否配置了对应的 webhook URL。只要配置了 `SLACK_WEBHOOK_URL`，Slack 通知就会自动启用。
+
+### Telegram 推送配置（可选）
+
+1. 在 Telegram 中搜索 `@BotFather`（带有蓝色对勾标记的官方机器人）
+2. 发送 `/newbot` 创建新机器人，按提示设置名称和用户名
+3. 复制返回的 Bot Token（格式：`123456789:AAH...`）
+4. 向你的机器人发送一条消息（任何内容都可以）
+5. 在浏览器访问以下 URL 获取 Chat ID：
+
+```
+https://api.telegram.org/bot<TOKEN>/getUpdates
+```
+
+   将 `<TOKEN>` 替换为你的 Bot Token，在返回的 JSON 中找到 `"id"` 数字
+6. 写入 `.env`：
+
+```env
+TELEGRAM_BOT_TOKEN=123456789:AAH...
+TELEGRAM_CHAT_ID=123456789
+```
+
+**注意**：
+- Chat ID 是纯数字，不是 URL
+- 如果要发送到群组，需要先将机器人添加到群组，然后获取群组 ID
+- **重要**：通知是否启用仅取决于 `.env` 中是否配置了 Bot Token 和 Chat ID。只要这两项都配置了，Telegram 通知就会自动启用。
+
+### 邮件推送配置（可选）
+
+1. 准备邮箱信息：
+   - 发件人邮箱地址
+   - 邮箱密码或授权码（某些邮箱需要授权码而非登录密码）
+   - 收件人邮箱地址（多个收件人用逗号分隔）
+
+2. **授权码获取方式**（如 Gmail、QQ 邮箱等）：
+   - 登录邮箱网页版
+   - 进入设置 → 账户安全
+   - 开启 SMTP 服务（或两步验证）
+   - 生成授权码（Application-specific password）
+
+3. 写入 `.env`：
+
+```env
+EMAIL_FROM=your_email@gmail.com
+EMAIL_PASSWORD=your_password_or_app_code
+EMAIL_TO=recipient1@example.com,recipient2@example.com
+```
+
+4. **可选：自定义 SMTP 配置**（如自动检测失败）
+
+系统会自动检测常见邮箱服务商的 SMTP 配置，包括：Gmail、QQ 邮箱、163 邮箱、126 邮箱、Outlook、Hotmail、新浪邮箱、搜狐邮箱、阿里云邮箱、Yandex、iCloud、189 邮箱等。
+
+如果自动检测失败，可以手动配置：
+
+```env
+EMAIL_SMTP_SERVER=smtp.gmail.com
+EMAIL_SMTP_PORT=587
+```
+
+**重要**：通知是否启用仅取决于 `.env` 中是否配置了发件人邮箱、密码和收件人邮箱。只要这三项都配置了，邮件通知就会自动启用。
 
 ### 新闻关键词配置
 
@@ -294,29 +365,29 @@ indicators:
 
 ### Q1: pip 安装失败
 
-**问题**: `ta-lib` 安装失败
+**问题**: 依赖安装失败或版本冲突
 
 **解决方案**:
 ```bash
-# Mac
-brew install ta-lib
+# 升级构建工具
+python -m pip install --upgrade pip setuptools wheel
 
-# Ubuntu/Debian
-sudo apt-get install ta-lib
-
-# Windows
-# 从 https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib 下载预编译包
-# 然后安装: pip install TA_Lib-0.4.xx-cpxx-cpxx-win_amd64.whl
+# 如仍失败，建议重建虚拟环境
+rm -rf venv
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-### Q2: iTick API 返回 401
+并确保 Python 版本为 3.10+。
 
-**问题**: API Token 无效
+### Q2: Stooq 数据为空
+
+**问题**: 返回空数据或最新行情缺失
 
 **解决方案**:
-1. 检查 `.env` 文件中的 token 是否正确
-2. 访问 iTick 控制台重新生成 token
-3. 确保没有多余的空格或引号
+1. 检查 `config/config.yaml` 中 `stooq_symbol` 是否正确（如 `xauusd`、`xagusd`）
+2. 确认网络可访问 `https://stooq.com/q/d/l/`
+3. 使用 `1d/1w/1m` 时间周期运行
 
 ### Q3: LLM API 超时
 

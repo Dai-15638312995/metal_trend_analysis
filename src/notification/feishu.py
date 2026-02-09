@@ -13,10 +13,12 @@ import time
 import requests
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from loguru import logger
+
+from .base import BaseNotifier
+from ..utils.exceptions import NotificationError, ValidationError, NetworkError
 
 
-class FeishuNotifier:
+class FeishuNotifier(BaseNotifier):
     """飞书通知推送器"""
 
     # 飞书消息长度限制（字节）
@@ -26,42 +28,49 @@ class FeishuNotifier:
     # 免责声明
     DISCLAIMER = "⚠️ AI生成，仅供参考，不构成投资建议"
 
-    def __init__(self, webhook_url: str = None, timeout: int = 30):
+    def __init__(self, webhook_url: str = None, timeout: int = 30, **kwargs):
         """
         初始化飞书推送器
 
         Args:
             webhook_url: 飞书机器人 Webhook URL，不传则从环境变量读取
             timeout: 请求超时时间
+            **kwargs: 其他配置参数
         """
         self.webhook_url = webhook_url or os.getenv('FEISHU_WEBHOOK_URL', '')
-        self.timeout = timeout
+        super().__init__(timeout=timeout, webhook_url=self.webhook_url, **kwargs)
 
-        if not self.webhook_url:
-            logger.warning("飞书 Webhook URL 未配置，推送功能将不可用")
+    def _validate_config(self, **kwargs) -> None:
+        """验证飞书配置"""
+        webhook_url = kwargs.get('webhook_url', '')
+        if webhook_url and not webhook_url.startswith('https://'):
+            raise ValidationError("Feishu webhook URL must be HTTPS")
+
+        if not webhook_url:
+            self.logger.warning("飞书 Webhook URL 未配置，推送功能将不可用")
 
     def is_available(self) -> bool:
         """检查飞书推送是否可用"""
         return bool(self.webhook_url)
 
-    def send_text(self, text: str) -> bool:
+    def _send_message(self, message: str, **kwargs) -> bool:
         """
-        发送纯文本消息
+        发送原始消息到飞书
 
         Args:
-            text: 消息内容
+            message: 消息内容
+            **kwargs: 额外参数
 
         Returns:
             是否发送成功
-        """
-        if not self.is_available():
-            logger.warning("飞书 Webhook 未配置，跳过推送")
-            return False
 
+        Raises:
+            NotificationError: 发送失败时抛出
+        """
         payload = {
             "msg_type": "text",
             "content": {
-                "text": text
+                "text": self._truncate_message(message, self.MAX_TEXT_BYTES)
             }
         }
 
@@ -87,52 +96,57 @@ class FeishuNotifier:
             是否发送成功
         """
         if not self.is_available():
-            logger.warning("飞书 Webhook 未配置，跳过推送")
+            self.logger.warning("飞书 Webhook 未配置，跳过推送")
             return False
 
-        elements = [
-            {
-                "tag": "div",
-                "text": {
-                    "tag": "lark_md",
-                    "content": content
+        try:
+            elements = [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": self._truncate_message(content, self.MAX_CARD_BYTES)
+                    }
+                }
+            ]
+
+            # 添加底部说明
+            if footer_text:
+                elements.append({
+                    "tag": "hr"
+                })
+                elements.append({
+                    "tag": "note",
+                    "elements": [
+                        {
+                            "tag": "plain_text",
+                            "content": footer_text
+                        }
+                    ]
+                })
+
+            payload = {
+                "msg_type": "interactive",
+                "card": {
+                    "config": {
+                        "wide_screen_mode": True
+                    },
+                    "header": {
+                        "title": {
+                            "tag": "plain_text",
+                            "content": title
+                        },
+                        "template": header_color
+                    },
+                    "elements": elements
                 }
             }
-        ]
 
-        # 添加底部说明
-        if footer_text:
-            elements.append({
-                "tag": "hr"
-            })
-            elements.append({
-                "tag": "note",
-                "elements": [
-                    {
-                        "tag": "plain_text",
-                        "content": footer_text
-                    }
-                ]
-            })
+            return self._send_request(payload)
 
-        payload = {
-            "msg_type": "interactive",
-            "card": {
-                "config": {
-                    "wide_screen_mode": True
-                },
-                "header": {
-                    "title": {
-                        "tag": "plain_text",
-                        "content": title
-                    },
-                    "template": header_color
-                },
-                "elements": elements
-            }
-        }
-
-        return self._send_request(payload)
+        except Exception as e:
+            self.logger.error(f"Error creating card message: {e}")
+            return False
 
     def send_market_report(
         self,
@@ -140,11 +154,11 @@ class FeishuNotifier:
         symbol: str,
         quote_data: Dict[str, Any],
         technical_data: Dict[str, Any],
-        patterns: Dict[str, int] = None,
+        patterns: Dict[str, Any] = None,
         llm_analysis: Dict[str, Any] = None
     ) -> bool:
         """
-        发送市场分析报告（贵金属专用格式）
+        发送市场分析报告（飞书卡片格式）
 
         Args:
             symbol_name: 品种名称 (如 "国际现货黄金")
@@ -157,34 +171,34 @@ class FeishuNotifier:
         Returns:
             是否发送成功
         """
-        # 构建飞书卡片内容
-        content = self._build_market_report_content(
-            symbol_name, symbol, quote_data, technical_data, patterns, llm_analysis
-        )
+        try:
+            # 构建飞书卡片内容
+            content = self._build_market_report_content(
+                symbol_name, symbol, quote_data, technical_data, patterns, llm_analysis
+            )
 
-        # 判断趋势设置卡片颜色
-        trend = technical_data.get('trend', 'neutral') if technical_data else 'neutral'
-        if trend == 'bullish':
-            color = "red"  # 看涨用红色
-        elif trend == 'bearish':
-            color = "green"  # 看跌用绿色
-        else:
-            color = "blue"  # 中性用蓝色
+            # 判断趋势设置卡片颜色
+            trend = technical_data.get('trend', 'neutral') if technical_data else 'neutral'
+            if trend == 'bullish':
+                color = "red"  # 看涨用红色
+            elif trend == 'bearish':
+                color = "green"  # 看跌用绿色
+            else:
+                color = "blue"  # 中性用蓝色
 
-        # 生成标题
-        price = quote_data.get('price', 0) if quote_data else 0
-        change_pct = quote_data.get('change_percent', 0) if quote_data else 0
-        trend_icon = "🔺" if change_pct > 0 else ("🔻" if change_pct < 0 else "➖")
+            # 生成标题
+            price = quote_data.get('price', 0) if quote_data else 0
+            change_pct = quote_data.get('change_percent', 0) if quote_data else 0
+            trend_icon = "🔺" if change_pct > 0 else ("🔻" if change_pct < 0 else "➖")
 
-        title = f"{trend_icon} {symbol_name} ${price:.2f} ({change_pct:+.2f}%)"
+            title = f"{trend_icon} {symbol_name} ${price:.2f} ({change_pct:+.2f}%)"
+            footer = self._get_card_footer()
 
-        footer = self._get_card_footer()
+            return self.send_card(title, content, color, footer)
 
-        return self.send_card(title, content, color, footer)
-
-    def _get_card_footer(self, data_source: str = "iTick API") -> str:
-        """生成卡片消息的页脚"""
-        return f"{self.DISCLAIMER}\n更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 数据来源: {data_source}"
+        except Exception as e:
+            self.logger.error(f"Error sending market report: {e}")
+            return False
 
     def send_daily_summary(
         self,
@@ -192,7 +206,7 @@ class FeishuNotifier:
         gold_silver_ratio: float = None
     ) -> bool:
         """
-        发送每日汇总报告
+        发送每日汇总报告（飞书卡片格式）
 
         Args:
             reports: 多个品种的分析报告列表
@@ -201,12 +215,20 @@ class FeishuNotifier:
         Returns:
             是否发送成功
         """
-        content = self._build_daily_summary_content(reports, gold_silver_ratio)
+        try:
+            content = self._build_daily_summary_content(reports, gold_silver_ratio)
+            title = f"📊 贵金属每日分析汇总 ({datetime.now().strftime('%Y-%m-%d')})"
+            footer = self._get_card_footer()
 
-        title = f"📊 贵金属每日分析汇总 ({datetime.now().strftime('%Y-%m-%d')})"
-        footer = self._get_card_footer()
+            return self.send_card(title, content, "indigo", footer)
 
-        return self.send_card(title, content, "indigo", footer)
+        except Exception as e:
+            self.logger.error(f"Error sending daily summary: {e}")
+            return False
+
+    def _get_card_footer(self, data_source: str = "Stooq") -> str:
+        """生成卡片消息的页脚"""
+        return f"{self.DISCLAIMER}\n更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 数据来源: {data_source}"
 
     def _build_market_report_content(
         self,
@@ -214,10 +236,10 @@ class FeishuNotifier:
         symbol: str,
         quote_data: Dict[str, Any],
         technical_data: Dict[str, Any],
-        patterns: Dict[str, int] = None,
+        patterns: Dict[str, Any] = None,
         llm_analysis: Dict[str, Any] = None
     ) -> str:
-        """构建市场报告内容"""
+        """构建飞书格式的市场报告内容"""
         lines = []
 
         # === 行情概览 ===
@@ -256,12 +278,14 @@ class FeishuNotifier:
             resistance = technical_data.get('resistance_levels', [])
 
             if support:
-                support_str = ", ".join([f"${s:.2f}" if isinstance(s, (int, float)) else str(s) for s in support[:2]])
-                lines.append(f"• 支撑位: {support_str}")
+                support_str = ", ".join([f"${s:.2f}" for s in support[:2] if isinstance(s, (int, float))])
+                if support_str:
+                    lines.append(f"• 支撑位: {support_str}")
 
             if resistance:
-                resistance_str = ", ".join([f"${r:.2f}" if isinstance(r, (int, float)) else str(r) for r in resistance[:2]])
-                lines.append(f"• 阻力位: {resistance_str}")
+                resistance_str = ", ".join([f"${r:.2f}" for r in resistance[:2] if isinstance(r, (int, float))])
+                if resistance_str:
+                    lines.append(f"• 阻力位: {resistance_str}")
 
             # RSI
             if 'rsi' in technical_data and technical_data['rsi'] is not None:
@@ -279,7 +303,6 @@ class FeishuNotifier:
 
         # === K线形态 ===
         if patterns:
-            # 形态名称中英文映射
             pattern_names = {
                 'doji': '十字星',
                 'hammer': '锤子线',
@@ -291,79 +314,48 @@ class FeishuNotifier:
                 'three_white_soldiers': '三白兵',
                 'three_black_crows': '三黑鸦'
             }
-            
-            has_patterns = False
+
             pattern_lines = []
             for pattern_key, pattern_data in patterns.items():
-                # pattern_data 可能是列表或数字
-                if isinstance(pattern_data, list):
-                    count = len(pattern_data)
-                elif isinstance(pattern_data, (int, float)):
-                    count = int(pattern_data)
-                else:
-                    count = 0
-                
+                count = len(pattern_data) if isinstance(pattern_data, list) else int(pattern_data or 0)
                 if count > 0:
-                    has_patterns = True
                     name = pattern_names.get(pattern_key, pattern_key)
                     pattern_lines.append(f"• {name}: {count}次")
-            
-            if has_patterns:
+
+            if pattern_lines:
                 lines.append("**🕯️ K线形态识别**")
                 lines.extend(pattern_lines)
                 lines.append("")
 
         # === LLM 分析 ===
-        if llm_analysis:
-            # 处理不同格式的 LLM 分析结果
+        if llm_analysis and not llm_analysis.get('error'):
             analysis_content = llm_analysis.get('analysis', {})
-            
-            # 如果是嵌套字典格式
-            if isinstance(analysis_content, dict):
+
+            if isinstance(analysis_content, dict) and analysis_content:
                 lines.append("**🤖 AI 智能分析**")
-                
-                # 趋势分析
+
                 if analysis_content.get('trend'):
-                    trend_icon = "🔴" if analysis_content['trend'] in ['看涨', 'bullish'] else (
-                        "🟢" if analysis_content['trend'] in ['看跌', 'bearish'] else "⚪"
+                    trend_icon = "🔴" if 'bullish' in str(analysis_content['trend']).lower() or '看涨' in str(analysis_content['trend']) else (
+                        "🟢" if 'bearish' in str(analysis_content['trend']).lower() or '看跌' in str(analysis_content['trend']) else "⚪"
                     )
                     lines.append(f"• 趋势判断: {trend_icon} {analysis_content['trend']}")
-                
-                # 分析概要
+
                 if analysis_content.get('summary'):
-                    lines.append(f"• 分析概要: {analysis_content['summary'][:200]}")
-                
-                # 关键点位
-                if analysis_content.get('key_levels'):
-                    lines.append(f"• 关键点位: {analysis_content['key_levels']}")
-                
-                # 风险等级
+                    summary = str(analysis_content['summary'])[:200]
+                    lines.append(f"• 分析概要: {summary}")
+
                 if analysis_content.get('risk_level'):
-                    risk_icon = {"低": "🟢", "中": "🟡", "高": "🔴"}.get(analysis_content['risk_level'], "⚪")
+                    risk_icon = {"低": "🟢", "中": "🟡", "高": "🔴"}.get(str(analysis_content['risk_level']), "⚪")
                     lines.append(f"• 风险等级: {risk_icon} {analysis_content['risk_level']}")
-                
-                lines.append("")
-                
-                # 操作建议（单独展示，更醒目）
+
                 if analysis_content.get('suggestion'):
-                    suggestion = analysis_content['suggestion']
+                    suggestion = str(analysis_content['suggestion'])
                     if len(suggestion) > 300:
                         suggestion = suggestion[:300] + "..."
+                    lines.append("")
                     lines.append(f"**💡 操作建议**")
                     lines.append(suggestion)
-                    lines.append("")
-            
-            # 如果是字符串格式
-            elif isinstance(analysis_content, str) and analysis_content:
-                lines.append("**🤖 AI 智能分析**")
-                if len(analysis_content) > 500:
-                    analysis_content = analysis_content[:500] + "..."
-                lines.append(analysis_content)
-                lines.append("")
-            
-            # 兼容旧格式的 recommendation
-            elif llm_analysis.get('recommendation'):
-                lines.append(f"**💡 操作建议**: {llm_analysis['recommendation']}")
+
                 lines.append("")
 
         return "\n".join(lines)
@@ -373,7 +365,7 @@ class FeishuNotifier:
         reports: List[Dict[str, Any]],
         gold_silver_ratio: float = None
     ) -> str:
-        """构建每日汇总内容"""
+        """构建飞书格式的每日汇总内容"""
         lines = []
 
         # 黄金白银比
@@ -408,17 +400,29 @@ class FeishuNotifier:
             # 支撑阻力位简要
             support = technical.get('support_levels', [])
             resistance = technical.get('resistance_levels', [])
-            if support:
-                lines.append(f"• 支撑: ${support[0]:.2f}" if isinstance(support[0], (int, float)) else f"• 支撑: {support[0]}")
-            if resistance:
-                lines.append(f"• 阻力: ${resistance[0]:.2f}" if isinstance(resistance[0], (int, float)) else f"• 阻力: {resistance[0]}")
+            if support and isinstance(support[0], (int, float)):
+                lines.append(f"• 支撑: ${support[0]:.2f}")
+            if resistance and isinstance(resistance[0], (int, float)):
+                lines.append(f"• 阻力: ${resistance[0]:.2f}")
 
             lines.append("")
 
         return "\n".join(lines)
 
     def _send_request(self, payload: Dict[str, Any]) -> bool:
-        """发送请求到飞书 Webhook"""
+        """
+        发送请求到飞书 Webhook
+
+        Args:
+            payload: 请求载荷
+
+        Returns:
+            是否发送成功
+
+        Raises:
+            NetworkError: 网络错误
+            NotificationError: 飞书API错误
+        """
         try:
             response = requests.post(
                 self.webhook_url,
@@ -434,23 +438,22 @@ class FeishuNotifier:
                 code = result.get('code', result.get('StatusCode', -1))
 
                 if code == 0:
-                    logger.info("飞书消息发送成功")
+                    self.logger.info("飞书消息发送成功")
                     return True
                 else:
                     error_msg = result.get('msg', result.get('StatusMessage', '未知错误'))
-                    logger.error(f"飞书返回错误 [code={code}]: {error_msg}")
-                    return False
+                    raise NotificationError(f"飞书返回错误 [code={code}]: {error_msg}")
             else:
-                logger.error(f"飞书请求失败: HTTP {response.status_code}")
-                logger.debug(f"响应内容: {response.text}")
-                return False
+                raise NetworkError(f"飞书请求失败: HTTP {response.status_code}")
 
-        except requests.exceptions.Timeout:
-            logger.error("飞书请求超时")
-            return False
+        except requests.exceptions.Timeout as e:
+            raise NetworkError(f"飞书请求超时: {e}")
         except requests.exceptions.RequestException as e:
-            logger.error(f"飞书请求异常: {e}")
-            return False
+            raise NetworkError(f"飞书请求异常: {e}")
+        except NotificationError:
+            raise
+        except Exception as e:
+            raise NotificationError(f"飞书发送失败: {e}")
 
     def send_chunked(self, title: str, content: str, max_bytes: int = None) -> bool:
         """
@@ -476,16 +479,19 @@ class FeishuNotifier:
         chunks = self._split_content(content, max_bytes)
         total_chunks = len(chunks)
 
-        logger.info(f"飞书消息分批发送：共 {total_chunks} 批")
+        self.logger.info(f"飞书消息分批发送：共 {total_chunks} 批")
 
         success_count = 0
         for i, chunk in enumerate(chunks):
             chunk_title = f"{title} ({i + 1}/{total_chunks})"
 
-            if self.send_card(chunk_title, chunk):
-                success_count += 1
-            else:
-                logger.error(f"飞书第 {i + 1}/{total_chunks} 批发送失败")
+            try:
+                if self.send_card(chunk_title, chunk):
+                    success_count += 1
+                else:
+                    self.logger.error(f"飞书第 {i + 1}/{total_chunks} 批发送失败")
+            except Exception as e:
+                self.logger.error(f"飞书第 {i + 1}/{total_chunks} 批发送异常: {e}")
 
             # 批次间间隔，避免触发限流
             if i < total_chunks - 1:

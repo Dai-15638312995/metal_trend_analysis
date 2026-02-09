@@ -40,13 +40,11 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 2. Get API Keys
+### 2. Data Source
 
-#### iTick API (Required)
+#### Stooq (Free, No API Key Required)
 
-1. Visit https://itick.org and register
-2. Go to the console and get your API Token
-3. Free tier: 5 calls/minute
+Stooq provides public daily data with weekly/monthly resampling support.
 
 #### LLM API (Required)
 
@@ -64,7 +62,6 @@ vim .env
 Fill in your credentials:
 
 ```env
-ITICK_API_TOKEN=your_itick_token_here
 LLM_API_KEY=your_llm_api_key_here
 LLM_BASE_URL=https://api.deepseek.com/v1  # Optional
 LLM_MODEL_NAME=gpt-4o  # Or deepseek-chat
@@ -81,8 +78,12 @@ vim config/config.yaml
 
 ```yaml
 api:
-  itick:
-    token: "your_itick_token_here"
+  stooq:
+    base_url: "https://stooq.com/q/d/l/"
+    timeout: 20
+    retry: 3
+    retry_delay: 2
+    default_kline_count: 200
 
 llm:
   api_key: "your_llm_api_key_here"
@@ -121,16 +122,18 @@ python src/main.py --debug
 
 ## ⚙️ Detailed Configuration
 
-### iTick API
+### Stooq
 
-`config/itick_config.yaml`:
+`config/config.yaml`:
 
 ```yaml
-base_url: "https://api.itick.org/forex"
-token: ""  # Your API Token
-timeout: 30
-retry: 3
-retry_delay: 2
+api:
+  stooq:
+    base_url: "https://stooq.com/q/d/l/"
+    timeout: 20
+    retry: 3
+    retry_delay: 2
+    default_kline_count: 200
 ```
 
 ### LLM
@@ -163,7 +166,7 @@ llm:
 FEISHU_WEBHOOK_URL=https://open.feishu.cn/open-apis/bot/v2/hook/xxxxxxxx
 ```
 
-If `FEISHU_WEBHOOK_URL` is empty, no Feishu notifications will be sent.
+**Important**: Notification is enabled only when the corresponding webhook URL is configured in `.env`. Once you configure `FEISHU_WEBHOOK_URL`, Feishu notifications will be automatically enabled.
 
 ### DingTalk Notifications (Optional)
 
@@ -175,19 +178,82 @@ If `FEISHU_WEBHOOK_URL` is empty, no Feishu notifications will be sent.
 DINGTALK_WEBHOOK_URL=https://oapi.dingtalk.com/robot/send?access_token=xxxxxxxx
 ```
 
-In `config/config.yaml`, enable the corresponding notification channel:
+**Important**: Notification is enabled only when the corresponding webhook URL is configured in `.env`. Once you configure `DINGTALK_WEBHOOK_URL`, DingTalk notifications will be automatically enabled.
 
-```yaml
-notification:
-  enabled: true
-  channels:
-    feishu:
-      enabled: true
-      webhook_url: "${FEISHU_WEBHOOK_URL}"
-    dingtalk:
-      enabled: false  # Enable DingTalk
-      webhook_url: "${DINGTALK_WEBHOOK_URL}"
+### Slack Notifications (Optional)
+
+1. Visit [Slack API](https://api.slack.com/apps)
+2. Click "Create New App" → "From scratch"
+3. Enter App name and select workspace, then click "Create App"
+4. Go to "Incoming Webhooks" page and toggle "Activate Incoming Webhooks" to **On**
+5. Click "Add New Webhook to Workspace", select a channel and authorize
+6. Copy the Webhook URL
+7. Add to `.env`:
+
+```env
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXXXXXXX/XXXXXXXX/XXXXXXXX
 ```
+
+**Important**: Notification is enabled only when the corresponding webhook URL is configured in `.env`. Once you configure `SLACK_WEBHOOK_URL`, Slack notifications will be automatically enabled.
+
+### Telegram Notifications (Optional)
+
+1. Search for `@BotFather` in Telegram (ensure it has the blue checkmark)
+2. Send `/newbot` to create a new bot, follow the prompts to set name and username
+3. Copy the returned Bot Token (format: `123456789:AAH...`)
+4. Send a message to your bot (any content)
+5. Visit the following URL in your browser to get the Chat ID:
+
+```
+https://api.telegram.org/bot<TOKEN>/getUpdates
+```
+
+   Replace `<TOKEN>` with your Bot Token, find the `"id"` number in the returned JSON
+6. Add to `.env`:
+
+```env
+TELEGRAM_BOT_TOKEN=123456789:AAH...
+TELEGRAM_CHAT_ID=123456789
+```
+
+**Notes**:
+- Chat ID is a number, not a URL
+- To send to a group, you need to add the bot to the group first, then get the group ID
+- **Important**: Notification is enabled only when both Bot Token and Chat ID are configured in `.env`. Once you configure both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`, Telegram notifications will be automatically enabled.
+
+### Email Notifications (Optional)
+
+1. Prepare email information:
+   - Sender email address
+   - Email password or authorization code (some email providers require authorization code instead of login password)
+   - Recipient email addresses (comma-separated for multiple recipients)
+
+2. **How to get Authorization Code** (for Gmail, QQ Mail, etc.):
+   - Log in to your email web interface
+   - Go to Settings → Account Security
+   - Enable SMTP service (or two-factor authentication)
+   - Generate authorization code (Application-specific password)
+
+3. Add to `.env`:
+
+```env
+EMAIL_FROM=your_email@gmail.com
+EMAIL_PASSWORD=your_password_or_app_code
+EMAIL_TO=recipient1@example.com,recipient2@example.com
+```
+
+4. **Optional: Custom SMTP Configuration** (if auto-detection fails)
+
+The system automatically detects SMTP configurations for common email providers, including: Gmail, QQ Mail, 163 Mail, 126 Mail, Outlook, Hotmail, Sina Mail, Sohu Mail, Aliyun Mail, Yandex, iCloud, 189 Mail, etc.
+
+If auto-detection fails, you can manually configure:
+
+```env
+EMAIL_SMTP_SERVER=smtp.gmail.com
+EMAIL_SMTP_PORT=587
+```
+
+**Important**: Notification is enabled only when sender email, password, and recipient email are configured in `.env`. Once you configure all three (`EMAIL_FROM`, `EMAIL_PASSWORD`, and `EMAIL_TO`), email notifications will be automatically enabled.
 
 ### News Keywords Configuration
 黄金
@@ -210,7 +276,7 @@ XAGUSD
 
 - 📊 Daily summary report (Gold/Silver overview + Gold/Silver ratio)
 - 📈 Single instrument detailed report (quotes, technical indicators, candlestick patterns, news sentiment analysis, AI analysis)
-- 🔔 Multi-channel notification support: Feishu, DingTalk
+- 🔔 Multi-channel notification support: Feishu, DingTalk, Slack, Telegram, Email
 - 🔔 Supports card/Markdown message format for mobile-friendly reading
 
 ### News Sources Configuration
@@ -221,7 +287,7 @@ The system includes the following verified news sources:
 - **Bloomberg Markets** - World's leading business and financial market information provider
 - **CNBC Market News** - Authoritative US business news source
 
-#### Chinese News Sources  
+#### Chinese News Sources
 - **Phoenix Finance** - Well-known Chinese financial media
 
 #### Adding Custom News Sources
@@ -248,29 +314,29 @@ The following news sources have been verified as unavailable or require special 
 
 ### Q1: pip install fails
 
-**Problem**: `ta-lib` installation fails
+**Problem**: Dependency installation fails or version conflicts occur
 
 **Solution**:
 ```bash
-# Mac
-brew install ta-lib
+# Upgrade build tools
+python -m pip install --upgrade pip setuptools wheel
 
-# Ubuntu/Debian
-sudo apt-get install ta-lib
-
-# Windows
-# Download pre-compiled package from https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib
-# Then install: pip install TA_Lib-0.4.xx-cpxx-cpxx-win_amd64.whl
+# If it still fails, recreate the virtual environment
+rm -rf venv
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-### Q2: iTick API returns 401
+Make sure you are using Python 3.10 or higher.
 
-**Problem**: API Token invalid
+### Q2: Stooq data is empty
+
+**Problem**: No data returned or latest data missing
 
 **Solution**:
-1. Check if token in `.env` file is correct
-2. Regenerate token from iTick console
-3. Ensure no extra spaces or quotes
+1. Verify `stooq_symbol` in `config/config.yaml` (e.g., `xauusd`, `xagusd`)
+2. Ensure network access to `https://stooq.com/q/d/l/`
+3. Use `1d/1w/1m` timeframes
 
 ### Q3: LLM API timeout
 

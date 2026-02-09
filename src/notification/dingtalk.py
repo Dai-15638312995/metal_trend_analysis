@@ -13,54 +13,60 @@ import time
 import requests
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from loguru import logger
+
+from .base import BaseNotifier
+from ..utils.exceptions import NotificationError, ValidationError, NetworkError
 
 
-class DingTalkNotifier:
+class DingTalkNotifier(BaseNotifier):
     """钉钉通知推送器"""
 
     # 钉钉消息长度限制
-    MAX_MARKDOWN_BYTES = 5000000  # Markdown消息限制约20KB
+    MAX_MARKDOWN_BYTES = 50000  # Markdown消息限制约20KB
 
-    # 免责声明
-    DISCLAIMER = "⚠️ AI生成，仅供参考，不构成投资建议"
-
-    def __init__(self, webhook_url: str = None, timeout: int = 30):
+    def __init__(self, webhook_url: str = None, timeout: int = 30, **kwargs):
         """
         初始化钉钉推送器
 
         Args:
             webhook_url: 钉钉机器人 Webhook URL，不传则从环境变量读取
             timeout: 请求超时时间
+            **kwargs: 其他配置参数
         """
         self.webhook_url = webhook_url or os.getenv('DINGTALK_WEBHOOK_URL', '')
-        self.timeout = timeout
+        super().__init__(timeout=timeout, webhook_url=self.webhook_url, **kwargs)
 
-        if not self.webhook_url:
-            logger.warning("钉钉 Webhook URL 未配置，推送功能将不可用")
+    def _validate_config(self, **kwargs) -> None:
+        """验证钉钉配置"""
+        webhook_url = kwargs.get('webhook_url', '')
+        if webhook_url and not webhook_url.startswith('https://'):
+            raise ValidationError("DingTalk webhook URL must be HTTPS")
+
+        if not webhook_url:
+            self.logger.warning("钉钉 Webhook URL 未配置，推送功能将不可用")
 
     def is_available(self) -> bool:
         """检查钉钉推送是否可用"""
         return bool(self.webhook_url)
 
-    def send_text(self, text: str) -> bool:
+    def _send_message(self, message: str, **kwargs) -> bool:
         """
-        发送纯文本消息
+        发送原始消息到钉钉
 
         Args:
-            text: 消息内容
+            message: 消息内容
+            **kwargs: 额外参数
 
         Returns:
             是否发送成功
-        """
-        if not self.is_available():
-            logger.warning("钉钉 Webhook 未配置，跳过推送")
-            return False
 
+        Raises:
+            NotificationError: 发送失败时抛出
+        """
         payload = {
             "msgtype": "text",
             "text": {
-                "content": text
+                "content": self._truncate_message(message, self.MAX_MARKDOWN_BYTES)
             }
         }
 
@@ -78,6 +84,262 @@ class DingTalkNotifier:
             是否发送成功
         """
         if not self.is_available():
+            self.logger.warning("钉钉 Webhook 未配置，跳过推送")
+            return False
+
+        try:
+            payload = {
+                "msgtype": "markdown",
+                "markdown": {
+                    "title": title,
+                    "text": self._truncate_message(text, self.MAX_MARKDOWN_BYTES)
+                }
+            }
+
+            return self._send_request(payload)
+
+        except Exception as e:
+            self.logger.error(f"Error sending markdown message: {e}")
+            return False
+
+    def send_market_report(
+        self,
+        symbol_name: str,
+        symbol: str,
+        quote_data: Dict[str, Any],
+        technical_data: Dict[str, Any],
+        patterns: Dict[str, Any] = None,
+        llm_analysis: Dict[str, Any] = None
+    ) -> bool:
+        """
+        发送市场分析报告（钉钉Markdown格式）
+
+        Args:
+            symbol_name: 品种名称
+            symbol: 品种代码
+            quote_data: 实时报价数据
+            technical_data: 技术分析数据
+            patterns: K线形态统计
+            llm_analysis: LLM 分析结果
+
+        Returns:
+            是否发送成功
+        """
+        try:
+            # 构建报告内容
+            content = self._build_dingtalk_market_content(
+                symbol_name, symbol, quote_data, technical_data, patterns, llm_analysis
+            )
+
+            # 生成标题
+            price = quote_data.get('price', 0) if quote_data else 0
+            change_pct = quote_data.get('change_percent', 0) if quote_data else 0
+
+            title = f"{symbol_name} 市场分析报告"
+
+            return self.send_markdown(title, content)
+
+        except Exception as e:
+            self.logger.error(f"Error sending market report for {symbol}: {e}")
+            return False
+
+    def send_daily_summary(
+        self,
+        reports: List[Dict[str, Any]],
+        gold_silver_ratio: float = None
+    ) -> bool:
+        """
+        发送每日汇总报告（钉钉Markdown格式）
+
+        Args:
+            reports: 多个品种的分析报告列表
+            gold_silver_ratio: 黄金白银比
+
+        Returns:
+            是否发送成功
+        """
+        try:
+            content = self._build_dingtalk_daily_summary(reports, gold_silver_ratio)
+            title = f"贵金属每日分析汇总"
+
+            return self.send_markdown(title, content)
+
+        except Exception as e:
+            self.logger.error(f"Error sending daily summary: {e}")
+            return False
+
+    def _build_dingtalk_market_content(
+        self,
+        symbol_name: str,
+        symbol: str,
+        quote_data: Dict[str, Any],
+        technical_data: Dict[str, Any],
+        patterns: Dict[str, Any] = None,
+        llm_analysis: Dict[str, Any] = None
+    ) -> str:
+        """构建钉钉Markdown格式的市场报告内容"""
+        lines = []
+
+        # 标题
+        price = quote_data.get('price', 0) if quote_data else 0
+        change_pct = quote_data.get('change_percent', 0) if quote_data else 0
+        trend_icon = "📈" if change_pct > 0 else ("📉" if change_pct < 0 else "➖")
+
+        lines.append(f"# {trend_icon} {symbol_name} ({symbol})")
+        lines.append("")
+
+        # 行情信息
+        if quote_data:
+            lines.append("## 📊 实时行情")
+            lines.append(f"- **最新价**: ${price:.2f}")
+            lines.append(f"- **涨跌幅**: {change_pct:+.2f}%")
+            lines.append(f"- **今日高低**: ${quote_data.get('high', 0):.2f} / ${quote_data.get('low', 0):.2f}")
+            lines.append("")
+
+        # 技术分析
+        if technical_data:
+            lines.append("## 🔍 技术分析")
+
+            trend = technical_data.get('trend', 'neutral')
+            trend_text = {"bullish": "看涨", "bearish": "看跌", "neutral": "中性"}.get(trend, "中性")
+            lines.append(f"- **趋势方向**: {trend_text}")
+
+            support = technical_data.get('support_levels', [])
+            resistance = technical_data.get('resistance_levels', [])
+
+            if support:
+                support_str = ", ".join([f"${s:.2f}" for s in support[:2] if isinstance(s, (int, float))])
+                if support_str:
+                    lines.append(f"- **支撑位**: {support_str}")
+
+            if resistance:
+                resistance_str = ", ".join([f"${r:.2f}" for r in resistance[:2] if isinstance(r, (int, float))])
+                if resistance_str:
+                    lines.append(f"- **阻力位**: {resistance_str}")
+
+            lines.append("")
+
+        # LLM分析
+        if llm_analysis and not llm_analysis.get('error'):
+            analysis = llm_analysis.get('analysis', {})
+            if isinstance(analysis, dict) and analysis:
+                lines.append("## 🤖 AI分析")
+
+                if analysis.get('trend'):
+                    lines.append(f"- **AI趋势**: {analysis['trend']}")
+
+                if analysis.get('suggestion'):
+                    suggestion = str(analysis['suggestion'])
+                    if len(suggestion) > 200:
+                        suggestion = suggestion[:200] + "..."
+                    lines.append(f"- **操作建议**: {suggestion}")
+
+                lines.append("")
+
+        # 免责声明
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        lines.append("---")
+        lines.append(f"⚠️ AI生成，仅供参考，不构成投资建议")
+        lines.append(f"更新时间: {timestamp}")
+
+        return "\n".join(lines)
+
+    def _build_dingtalk_daily_summary(
+        self,
+        reports: List[Dict[str, Any]],
+        gold_silver_ratio: float = None
+    ) -> str:
+        """构建钉钉Markdown格式的每日汇总内容"""
+        lines = []
+        date_str = datetime.now().strftime('%Y-%m-%d')
+
+        lines.append(f"# 📊 贵金属每日分析汇总")
+        lines.append(f"**日期**: {date_str}")
+        lines.append("")
+
+        # 黄金白银比
+        if gold_silver_ratio:
+            lines.append("## ⚖️ 黄金白银比")
+            lines.append(f"- **当前比值**: {gold_silver_ratio:.1f}")
+            lines.append(f"- **历史均值**: 60-70")
+
+            ratio_status = "白银相对强势" if gold_silver_ratio < 60 else ("黄金相对强势" if gold_silver_ratio > 80 else "正常区间")
+            lines.append(f"- **市场研判**: {ratio_status}")
+            lines.append("")
+
+        # 各品种概览
+        lines.append("## 📈 品种概览")
+        for report in reports:
+            symbol_name = report.get('symbol_name', '')
+            symbol = report.get('symbol', '')
+            quote = report.get('quote_data', {})
+            technical = report.get('technical_data', {})
+
+            price = quote.get('price', 0)
+            change_pct = quote.get('change_percent', 0)
+            trend = technical.get('trend', 'neutral')
+
+            trend_icon = "📈" if change_pct > 0 else ("📉" if change_pct < 0 else "➖")
+            trend_text = {"bullish": "看涨", "bearish": "看跌", "neutral": "中性"}.get(trend, "中性")
+
+            lines.append(f"### {trend_icon} {symbol_name}")
+            lines.append(f"- **价格**: ${price:.2f} ({change_pct:+.2f}%)")
+            lines.append(f"- **趋势**: {trend_text}")
+            lines.append("")
+
+        # 免责声明
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        lines.append("---")
+        lines.append(f"⚠️ AI生成，仅供参考，不构成投资建议")
+        lines.append(f"更新时间: {timestamp}")
+
+        return "\n".join(lines)
+
+    def _send_request(self, payload: Dict[str, Any]) -> bool:
+        """
+        发送请求到钉钉 Webhook
+
+        Args:
+            payload: 请求载荷
+
+        Returns:
+            是否发送成功
+
+        Raises:
+            NetworkError: 网络错误
+            NotificationError: 钉钉API错误
+        """
+        try:
+            response = requests.post(
+                self.webhook_url,
+                json=payload,
+                timeout=self.timeout,
+                headers={
+                    "Content-Type": "application/json"
+                }
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                errcode = result.get('errcode', 0)
+
+                if errcode == 0:
+                    self.logger.info("钉钉消息发送成功")
+                    return True
+                else:
+                    error_msg = result.get('errmsg', '未知错误')
+                    raise NotificationError(f"钉钉返回错误 [errcode={errcode}]: {error_msg}")
+            else:
+                raise NetworkError(f"钉钉请求失败: HTTP {response.status_code}")
+
+        except requests.exceptions.Timeout as e:
+            raise NetworkError(f"钉钉请求超时: {e}")
+        except requests.exceptions.RequestException as e:
+            raise NetworkError(f"钉钉请求异常: {e}")
+        except NotificationError:
+            raise
+        except Exception as e:
+            raise NotificationError(f"钉钉发送失败: {e}")
             logger.warning("钉钉 Webhook 未配置，跳过推送")
             return False
 
@@ -147,7 +409,7 @@ class DingTalkNotifier:
 
         return self.send_markdown(title, content)
 
-    def _get_card_footer(self, data_source: str = "iTick API") -> str:
+    def _get_card_footer(self, data_source: str = "Stooq") -> str:
         """生成消息的页脚"""
         return f"{self.DISCLAIMER}\n\n更新时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | 数据来源: {data_source}"
 

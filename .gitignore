@@ -49,9 +49,6 @@ data/
 # Output files (generated content)
 output/
 
-# Internal documentation (development guides)
-docs/internal/
-
 # Config with real credentials
 config/config.yaml
 

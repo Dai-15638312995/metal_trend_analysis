@@ -7,8 +7,6 @@ services:
       dockerfile: Dockerfile
     container_name: metal-trend-analysis
     restart: unless-stopped
-    environment:
-      - TZ=Asia/Shanghai
     volumes:
       # 挂载配置文件
       - ./config:/app/config
