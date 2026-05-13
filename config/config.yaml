@@ -1,1 +1,154 @@
 
+# Stooq 免费数据源配置（仅日线，支持周/月线重采样）
+api:
+  stooq:
+    base_url: "https://stooq.com/q/d/l/"
+    timeout: 20
+    retry: 3
+    retry_delay: 2
+    default_kline_count: 200
+
+# LLM API 配置
+llm:
+  provider: "openai"  # 可选: openai, deepseek, qwen, other
+  api_key: "${LLM_API_KEY}"
+  base_url: "${LLM_BASE_URL}"  # 可选，用于第三方 API（如 DeepSeek）
+  model: "${LLM_MODEL_NAME}"  # 如: gpt-4o, deepseek-chat
+  temperature: 0.7
+  max_tokens: 2000
+  timeout: 60
+
+# 分析品种配置
+instruments:
+  gold:
+    symbol: "XAUUSD"
+    name: "国际现货黄金"
+    region: "GB"
+    stooq_symbol: "xauusd"
+    enabled: true
+  silver:
+    symbol: "XAGUSD"
+    name: "国际现货白银"
+    region: "GB"
+    stooq_symbol: "xagusd"
+    enabled: true
+
+# 技术指标参数
+indicators:
+  ma:
+    periods: [5, 10, 20, 60]
+  macd:
+    fast: 12
+    slow: 26
+    signal: 9
+  rsi:
+    period: 14
+    overbought: 70
+    oversold: 30
+  bollinger:
+    period: 20
+    std_dev: 2
+
+# 支撑阻力位识别
+support_resistance:
+  lookback: 100
+  swing_points: 3
+  proximity: 0.01  # 1% 容差
+
+# 新闻配置
+news:
+  enabled: true  # 启用新闻抓取
+  max_articles: 10  # 每个源最多抓取的文章数
+  cache_duration: 300  # 缓存时长（秒，5分钟）
+  fetch:
+    timeout: 15
+    delay: 2  # 不同源之间的请求延迟（秒）
+    max_retries: 3
+  sources:
+    # 英文RSS新闻源 (已验证可用)
+    - name: "Bloomberg Markets"
+      type: "rss"
+      url: "https://feeds.bloomberg.com/markets/news.rss"
+      enabled: true
+    - name: "CNBC Market News"
+      type: "rss"
+      url: "https://www.cnbc.com/id/10000664/device/rss/rss.html"
+      enabled: true
+
+    # 中文RSS新闻源 (已验证可用)
+    - name: "凤凰网财经"
+      type: "rss"
+      url: "https://finance.ifeng.com/rss/index.xml"
+      enabled: true
+
+    # 其他中文源（使用 HTML 解析 + Jina AI 文本代理，确保可拉取）
+    - name: "华尔街见闻"
+      type: "html"
+      url: "https://r.jina.ai/http://wallstreetcn.com/"
+      parser: "markdown_links"
+      link_contains:
+        - "wallstreetcn.com/articles"
+        - "wallstreetcn.com/livenews"
+      enabled: true
+    - name: "财联社电报"
+      type: "html"
+      url: "https://r.jina.ai/http://www.cls.cn/telegraph"
+      parser: "cls_telegraph"
+      enabled: true
+    - name: "澎湃新闻"
+      type: "html"
+      url: "https://r.jina.ai/http://www.thepaper.cn/list_25434"
+      parser: "markdown_links"
+      link_contains:
+        - "thepaper.cn/newsDetail"
+      enabled: true
+
+    # 注意：以下源已验证不可用或需要特殊处理，已暂时禁用
+    # - Reuters: DNS解析失败
+    # - Financial Times: 404错误
+    # - MarketWatch: 403禁止访问
+    # - 新浪财经: 404错误
+    # - 腾讯财经: 301重定向
+    # - 网易财经: 404错误
+    # - 和讯网: 需要JavaScript处理
+    # - 东方财富网: 无RSS内容
+    # - 澎湃新闻: 302重定向
+
+# 通知推送配置
+# 通知是否启用仅取决于 .env 中是否配置了对应的 webhook URL / 配置信息
+# 不需要在这里配置 enabled 开关
+notification:
+  channels:
+    feishu:
+      webhook_url: "${FEISHU_WEBHOOK_URL}"  # 从环境变量读取，留空则不推送
+      timeout: 30
+    dingtalk:
+      webhook_url: "${DINGTALK_WEBHOOK_URL}"  # 从环境变量读取，留空则不推送
+      timeout: 30
+    slack:
+      webhook_url: "${SLACK_WEBHOOK_URL}"  # 从环境变量读取，留空则不推送
+      timeout: 30
+    telegram:
+      bot_token: "${TELEGRAM_BOT_TOKEN}"  # 从环境变量读取，留空则不推送
+      chat_id: "${TELEGRAM_CHAT_ID}"  # 从环境变量读取，留空则不推送
+      timeout: 30
+    email:
+      from: "${EMAIL_FROM}"  # 从环境变量读取，留空则不推送
+      password: "${EMAIL_PASSWORD}"  # 从环境变量读取
+      to: "${EMAIL_TO}"  # 从环境变量读取，多个收件人用逗号分隔
+      smtp_server: "${EMAIL_SMTP_SERVER}"  # 可选，留空则自动检测
+      smtp_port: "${EMAIL_SMTP_PORT}"  # 可选，留空则自动检测
+      timeout: 30
+
+# 报告配置
+reports:
+  output_dir: "output/reports"
+  format: "markdown"  # markdown, html, json
+  include_charts: false
+
+# 日志配置
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "output/logs/app.log"
+  max_size: 10485760  # 10MB
+  backup_count: 5
