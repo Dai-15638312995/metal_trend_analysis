@@ -184,7 +184,7 @@ jobs:
       - name: Run gold analysis
         run: |
           mkdir -p output/reports output/logs data
-          python src/main.py --config config/config.yaml --instrument gold
+          python src/main.py --instrument gold
 
       - name: Upload reports
         if: always()
