@@ -2,7 +2,7 @@ name: Gold XAUUSD Analysis
 
 on:
   schedule:
-    - cron: '0 1 * * 1-5'   # UTC 01:00 = 北京时间 09:00，周一到周五
+    - cron: '*/10 * * * 1-5'   # UTC 01:00 = 北京时间 09:00，周一到周五
   workflow_dispatch:
 
 jobs:
