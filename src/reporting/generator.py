@@ -32,7 +32,8 @@ class ReportGenerator:
         technical_data: Dict[str, Any],
         news_articles: List[Dict[str, Any]],
         llm_analysis: Dict[str, Any],
-        gold_silver_ratio: float = None
+        gold_silver_ratio: float = None,
+        trading_advice: Dict[str, Any] = None
     ) -> str:
         """
         生成 Markdown 格式报告
@@ -237,8 +238,85 @@ class ReportGenerator:
 
         report_lines.append("")
 
-        # 四、综合研判
-        report_lines.append("## 四、综合研判")
+        # 四、交易建议
+        report_lines.append("## 四、交易建议")
+        report_lines.append("")
+
+        if trading_advice:
+            # 当前偏向
+            report_lines.append(f"### 4.1 当前偏向: {trading_advice.get('direction', '观望')}")
+            report_lines.append(f"**理由**: {trading_advice.get('bias_reason', '暂无')}")
+            report_lines.append(f"**置信度**: {trading_advice.get('confidence_score', 0)}%")
+            report_lines.append("")
+
+            # 交易方案
+            report_lines.append("### 4.2 交易方案")
+            report_lines.append("")
+            report_lines.append(f"**主方案**: {trading_advice.get('main_plan', '暂无')}")
+            report_lines.append(f"**备选方案**: {trading_advice.get('alternative_plan', '暂无')}")
+            report_lines.append("")
+
+            # 入场区间
+            entry_range = trading_advice.get('entry_range', (0, 0))
+            report_lines.append(f"**建议入场区间**: ${entry_range[0]:.2f} - ${entry_range[1]:.2f}")
+            report_lines.append("")
+
+            # 止损设置
+            report_lines.append("### 4.3 止损设置")
+            report_lines.append("")
+            stop_loss = trading_advice.get('stop_loss', {})
+            report_lines.append(f"| 止损类型 | 价格 | 说明 |")
+            report_lines.append(f"|---------|------|------|")
+            report_lines.append(f"| 激进止损 | ${stop_loss.get('aggressive', 0):.2f} | 较小止损，适合短线 |")
+            report_lines.append(f"| 标准止损 | ${stop_loss.get('standard', 0):.2f} | 平衡风险收益 |")
+            report_lines.append(f"| 结构止损 | ${stop_loss.get('structure', 0):.2f} | 关键位下方，适合波段 |")
+            report_lines.append("")
+
+            # 扫损区
+            sl_zone = trading_advice.get('stop_loss_zone', (0, 0))
+            report_lines.append(f"**扫损区**: ${sl_zone[0]:.2f} - ${sl_zone[1]:.2f}")
+            report_lines.append("> ⚠️ 价格进入此区间可能触发止损，需密切关注")
+            report_lines.append("")
+
+            # 目标位
+            report_lines.append("### 4.4 目标位")
+            report_lines.append("")
+            take_profit = trading_advice.get('take_profit', {})
+            report_lines.append(f"| 目标 | 价格 | 建议操作 |")
+            report_lines.append(f"|-----|------|---------|")
+            report_lines.append(f"| TP1 (第一目标) | ${take_profit.get('tp1', 0):.2f} | 减仓 30-50% |")
+            report_lines.append(f"| TP2 (第二目标) | ${take_profit.get('tp2', 0):.2f} | 再减仓 30% |")
+            tp3 = take_profit.get('tp3')
+            if tp3:
+                report_lines.append(f"| TP3 (第三目标) | ${tp3:.2f} | 剩余仓位持有或全部止盈 |")
+            report_lines.append("")
+
+            # 盈亏比
+            report_lines.append(f"**盈亏比**: 1:{trading_advice.get('risk_reward_ratio', 0):.2f}")
+            report_lines.append("")
+
+            # 作废条件
+            report_lines.append("### 4.5 作废条件")
+            report_lines.append("")
+            report_lines.append(f"{trading_advice.get('invalidation_condition', '暂无')}")
+            report_lines.append("")
+
+            # 仓位建议
+            report_lines.append("### 4.6 仓位建议")
+            report_lines.append("")
+            report_lines.append(f"**{trading_advice.get('position_suggestion', '观望')}**")
+            report_lines.append("")
+            report_lines.append("> 💡 **仓位管理原则**:")
+            report_lines.append("> - 单笔交易风险不超过总资金的 2%")
+            report_lines.append("> - 根据止损距离计算开仓手数")
+            report_lines.append("> - 分批建仓，避免一次性满仓")
+            report_lines.append("")
+        else:
+            report_lines.append("暂无交易建议")
+            report_lines.append("")
+
+        # 五、综合研判
+        report_lines.append("## 五、综合研判")
         report_lines.append("")
 
         if llm_analysis and llm_analysis.get('analysis'):

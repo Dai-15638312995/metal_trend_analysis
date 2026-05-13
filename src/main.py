@@ -18,6 +18,7 @@ from src.data_fetchers.news_fetcher import NewsFetcher
 from src.analyzers.technical import TechnicalAnalyzer
 from src.analyzers.patterns import PatternRecognizer
 from src.analyzers.news_sentiment import NewsSentimentAnalyzer
+from src.analyzers.trading_advisor import TradingAdvisor
 from src.llm.analyzer import LLMAnalyzer
 from src.reporting.generator import ReportGenerator
 from src.notification.feishu import FeishuNotifier
@@ -65,6 +66,10 @@ def initialize_analyzers(config: Dict[str, Any], logger) -> Tuple[Dict[str, Any]
         # Pattern recognizer
         analyzers['pattern_recognizer'] = PatternRecognizer()
         logger.info("Pattern recognizer initialized successfully")
+
+        # Trading advisor
+        analyzers['trading_advisor'] = TradingAdvisor()
+        logger.info("Trading advisor initialized successfully")
 
         # LLM analyzer
         llm_config = config.get('llm', {})
@@ -271,6 +276,7 @@ def analyze_instrument(
         stooq_client = analyzers['stooq_client']
         technical_analyzer = analyzers['technical_analyzer']
         pattern_recognizer = analyzers['pattern_recognizer']
+        trading_advisor = analyzers['trading_advisor']
         llm_analyzer = analyzers['llm_analyzer']
         report_generator = analyzers['report_generator']
 
@@ -333,6 +339,24 @@ def analyze_instrument(
 
         technical_result['patterns'] = patterns
 
+        # Generate trading advice
+        logger.info("Generating trading advice...")
+        current_price = quote_data.get('price', 0)
+        advice = trading_advisor.generate_advice(
+            kline_data,
+            trend_analysis,
+            support_levels,
+            resistance_levels,
+            current_price,
+            timeframe
+        )
+        trading_advice_dict = trading_advisor.to_dict(advice)
+        logger.info(f"Trading direction: {advice.direction.value}")
+        logger.info(f"Entry range: ${advice.entry_range[0]:.2f} - ${advice.entry_range[1]:.2f}")
+        logger.info(f"Stop loss (standard): ${advice.stop_loss_standard:.2f}")
+        logger.info(f"Take profit 1: ${advice.take_profit_1:.2f}")
+        logger.info(f"Confidence: {advice.confidence_score}%")
+
         # LLM comprehensive analysis
         logger.info("Performing LLM comprehensive analysis...")
         llm_result = llm_analyzer.analyze_market(
@@ -367,7 +391,8 @@ def analyze_instrument(
             quote_data,
             technical_result,
             news_articles,
-            llm_result
+            llm_result,
+            trading_advice=trading_advice_dict
         )
 
         report_path = report_generator.save_report(report_content, symbol, timeframe)
@@ -381,6 +406,7 @@ def analyze_instrument(
             'quote': quote_data,
             'technical': technical_result,
             'llm': llm_result,
+            'trading_advice': trading_advice_dict,
             'report_path': report_path
         }
 
@@ -438,7 +464,8 @@ def send_notifications(
             'quote_data': result['quote'],
             'technical_data': result['technical'],
             'patterns': result['technical'].get('patterns', {}),
-            'llm_analysis': result.get('llm', {})
+            'llm_analysis': result.get('llm', {}),
+            'trading_advice': result.get('trading_advice', {})
         })
 
     # Calculate gold-silver ratio
@@ -469,7 +496,8 @@ def send_notifications(
                     quote_data=report_data['quote_data'],
                     technical_data=report_data['technical_data'],
                     patterns=report_data.get('patterns'),
-                    llm_analysis=report_data.get('llm_analysis')
+                    llm_analysis=report_data.get('llm_analysis'),
+                    trading_advice=report_data.get('trading_advice')
                 ):
                     logger.info(f"{notifier_name} report for {report_data['symbol']} sent successfully")
                 else:

@@ -155,7 +155,8 @@ class FeishuNotifier(BaseNotifier):
         quote_data: Dict[str, Any],
         technical_data: Dict[str, Any],
         patterns: Dict[str, Any] = None,
-        llm_analysis: Dict[str, Any] = None
+        llm_analysis: Dict[str, Any] = None,
+        trading_advice: Dict[str, Any] = None
     ) -> bool:
         """
         发送市场分析报告（飞书卡片格式）
@@ -167,6 +168,7 @@ class FeishuNotifier(BaseNotifier):
             technical_data: 技术分析数据
             patterns: K线形态统计
             llm_analysis: LLM 分析结果
+            trading_advice: 交易建议
 
         Returns:
             是否发送成功
@@ -174,7 +176,7 @@ class FeishuNotifier(BaseNotifier):
         try:
             # 构建飞书卡片内容
             content = self._build_market_report_content(
-                symbol_name, symbol, quote_data, technical_data, patterns, llm_analysis
+                symbol_name, symbol, quote_data, technical_data, patterns, llm_analysis, trading_advice
             )
 
             # 判断趋势设置卡片颜色
@@ -237,7 +239,8 @@ class FeishuNotifier(BaseNotifier):
         quote_data: Dict[str, Any],
         technical_data: Dict[str, Any],
         patterns: Dict[str, Any] = None,
-        llm_analysis: Dict[str, Any] = None
+        llm_analysis: Dict[str, Any] = None,
+        trading_advice: Dict[str, Any] = None
     ) -> str:
         """构建飞书格式的市场报告内容"""
         lines = []
@@ -357,6 +360,66 @@ class FeishuNotifier(BaseNotifier):
                     lines.append(suggestion)
 
                 lines.append("")
+
+        # === 交易建议 ===
+        if trading_advice:
+            lines.append("**🎯 交易建议**")
+
+            direction = trading_advice.get('direction', '观望')
+            direction_icon = {"做多": "🔴", "做空": "🟢", "观望": "⚪"}.get(direction, "⚪")
+            confidence = trading_advice.get('confidence_score', 0)
+
+            lines.append(f"• 当前偏向: {direction_icon} **{direction}** (置信度 {confidence}%)")
+
+            bias_reason = trading_advice.get('bias_reason', '')
+            if bias_reason:
+                lines.append(f"• 偏向理由: {bias_reason}")
+
+            lines.append("")
+            lines.append("**📋 交易方案**")
+            lines.append(f"• 主方案: {trading_advice.get('main_plan', '暂无')}")
+            lines.append(f"• 备选方案: {trading_advice.get('alternative_plan', '暂无')}")
+
+            entry_range = trading_advice.get('entry_range', (0, 0))
+            if isinstance(entry_range, (list, tuple)) and len(entry_range) == 2:
+                lines.append(f"• 入场区间: ${entry_range[0]:.2f} ~ ${entry_range[1]:.2f}")
+
+            lines.append("")
+            lines.append("**🛡️ 止损设置**")
+            stop_loss = trading_advice.get('stop_loss', {})
+            if stop_loss:
+                lines.append(f"• 激进止损: ${stop_loss.get('aggressive', 0):.2f}")
+                lines.append(f"• 标准止损: ${stop_loss.get('standard', 0):.2f}")
+                lines.append(f"• 结构止损: ${stop_loss.get('structure', 0):.2f}")
+
+            sl_zone = trading_advice.get('stop_loss_zone', (0, 0))
+            if isinstance(sl_zone, (list, tuple)) and len(sl_zone) == 2:
+                lines.append(f"• 扫损区: ${sl_zone[0]:.2f} ~ ${sl_zone[1]:.2f}")
+
+            lines.append("")
+            lines.append("**🎯 目标位**")
+            take_profit = trading_advice.get('take_profit', {})
+            if take_profit:
+                lines.append(f"• TP1: ${take_profit.get('tp1', 0):.2f} (减仓30-50%)")
+                lines.append(f"• TP2: ${take_profit.get('tp2', 0):.2f} (再减仓30%)")
+                tp3 = take_profit.get('tp3')
+                if tp3:
+                    lines.append(f"• TP3: ${tp3:.2f} (全部止盈)")
+
+            rr = trading_advice.get('risk_reward_ratio', 0)
+            if rr:
+                lines.append(f"• 盈亏比: 1:{rr:.2f}")
+
+            lines.append("")
+            invalidation = trading_advice.get('invalidation_condition', '')
+            if invalidation:
+                lines.append(f"**⚠️ 作废条件**: {invalidation}")
+
+            position = trading_advice.get('position_suggestion', '')
+            if position:
+                lines.append(f"**仓位建议**: {position}")
+
+            lines.append("")
 
         return "\n".join(lines)
 
