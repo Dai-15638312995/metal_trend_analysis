@@ -1,0 +1,196 @@
+name: Gold XAUUSD Analysis
+
+on:
+  schedule:
+    - cron: '0 1 * * 1-5'   # UTC 01:00 = 北京时间 09:00，周一到周五
+  workflow_dispatch:
+
+jobs:
+  analyze-gold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Create .env
+        run: |
+          cat > .env <<EOF
+          LLM_API_KEY=${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL=${{ secrets.LLM_BASE_URL }}
+          LLM_MODEL_NAME=${{ secrets.LLM_MODEL_NAME }}
+          FEISHU_WEBHOOK_URL=${{ secrets.FEISHU_WEBHOOK_URL }}
+          DINGTALK_WEBHOOK_URL=${{ secrets.DINGTALK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
+          EMAIL_FROM=${{ secrets.EMAIL_FROM }}
+          EMAIL_PASSWORD=${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_TO=${{ secrets.EMAIL_TO }}
+          EMAIL_SMTP_SERVER=${{ secrets.EMAIL_SMTP_SERVER }}
+          EMAIL_SMTP_PORT=${{ secrets.EMAIL_SMTP_PORT }}
+          EOF
+
+      - name: Create config/config.yaml
+        run: |
+          mkdir -p config
+          cat > config/config.yaml <<'EOF'
+          api:
+            stooq:
+              base_url: "https://stooq.com/q/d/l/"
+              timeout: 20
+              retry: 3
+              retry_delay: 2
+              default_kline_count: 200
+
+          llm:
+            provider: "deepseek"
+            api_key: "${LLM_API_KEY}"
+            base_url: "${LLM_BASE_URL}"
+            model: "${LLM_MODEL_NAME}"
+            temperature: 0.7
+            max_tokens: 2000
+            timeout: 60
+
+          instruments:
+            gold:
+              symbol: "XAUUSD"
+              name: "国际现货黄金"
+              region: "GB"
+              stooq_symbol: "xauusd"
+              enabled: true
+            silver:
+              symbol: "XAGUSD"
+              name: "国际现货白银"
+              region: "GB"
+              stooq_symbol: "xagusd"
+              enabled: false
+
+          indicators:
+            ma:
+              periods: [5, 10, 20, 60]
+            macd:
+              fast: 12
+              slow: 26
+              signal: 9
+            rsi:
+              period: 14
+              overbought: 70
+              oversold: 30
+            bollinger:
+              period: 20
+              std_dev: 2
+
+          support_resistance:
+            lookback: 100
+            swing_points: 3
+            proximity: 0.01
+
+          news:
+            enabled: true
+            max_articles: 8
+            cache_duration: 300
+            fetch:
+              timeout: 15
+              delay: 2
+              max_retries: 3
+            sources:
+              - name: "Bloomberg Markets"
+                type: "rss"
+                url: "https://feeds.bloomberg.com/markets/news.rss"
+                enabled: true
+              - name: "CNBC Market News"
+                type: "rss"
+                url: "https://www.cnbc.com/id/10000664/device/rss/rss.html"
+                enabled: true
+              - name: "凤凰网财经"
+                type: "rss"
+                url: "https://finance.ifeng.com/rss/index.xml"
+                enabled: true
+              - name: "华尔街见闻"
+                type: "html"
+                url: "https://r.jina.ai/http://wallstreetcn.com/"
+                parser: "markdown_links"
+                link_contains:
+                  - "wallstreetcn.com/articles"
+                  - "wallstreetcn.com/livenews"
+                enabled: true
+
+          notification:
+            channels:
+              feishu:
+                webhook_url: "${FEISHU_WEBHOOK_URL}"
+                timeout: 30
+              dingtalk:
+                webhook_url: "${DINGTALK_WEBHOOK_URL}"
+                timeout: 30
+              slack:
+                webhook_url: "${SLACK_WEBHOOK_URL}"
+                timeout: 30
+              telegram:
+                bot_token: "${TELEGRAM_BOT_TOKEN}"
+                chat_id: "${TELEGRAM_CHAT_ID}"
+                timeout: 30
+              email:
+                from: "${EMAIL_FROM}"
+                password: "${EMAIL_PASSWORD}"
+                to: "${EMAIL_TO}"
+                smtp_server: "${EMAIL_SMTP_SERVER}"
+                smtp_port: "${EMAIL_SMTP_PORT}"
+                timeout: 30
+
+          reports:
+            output_dir: "output/reports"
+            format: "markdown"
+            include_charts: false
+
+          logging:
+            level: "INFO"
+            file: "output/logs/app.log"
+            max_size: 10485760
+            backup_count: 5
+          EOF
+
+      - name: Create keywords file if missing
+        run: |
+          mkdir -p config
+          if [ ! -f config/keywords.txt ]; then
+            cat > config/keywords.txt <<'EOF'
+          gold
+          xauusd
+          黄金
+          美联储
+          通胀
+          利率
+          避险
+          美元
+          非农
+          CPI
+          EOF
+          fi
+
+      - name: Run gold analysis
+        run: |
+          mkdir -p output/reports output/logs data
+          python src/main.py --config config/config.yaml --instrument gold
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gold-analysis-output
+          path: |
+            output/reports
+            output/logs
