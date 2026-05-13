@@ -5,6 +5,9 @@ numpy>=1.24.0
 # HTTP 请求
 requests>=2.31.0
 
+# 数据获取 (Yahoo Finance)
+yfinance>=0.2.0
+
 # 技术分析
 
 # LLM API

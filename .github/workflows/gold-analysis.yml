@@ -1,21 +1,34 @@
-name: Gold XAUUSD Analysis
+name: Gold & Silver Analysis
 
 on:
   schedule:
-    - cron: '*/10 * * * 1-5'   # UTC 01:00 = 北京时间 09:00，周一到周五
+    # 北京时间 09:00 和 21:00 运行（周一到周五）
+    # UTC 01:00 = 北京时间 09:00
+    # UTC 13:00 = 北京时间 21:00
+    - cron: '0 1,13 * * 1-5'
   workflow_dispatch:
+    inputs:
+      instrument:
+        description: '分析品种'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - gold
+          - silver
 
 jobs:
-  analyze-gold:
+  analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -56,7 +69,7 @@ jobs:
               default_kline_count: 200
 
           llm:
-            provider: "deepseek"
+            provider: "openai"
             api_key: "${LLM_API_KEY}"
             base_url: "${LLM_BASE_URL}"
             model: "${LLM_MODEL_NAME}"
@@ -76,7 +89,7 @@ jobs:
               name: "国际现货白银"
               region: "GB"
               stooq_symbol: "xagusd"
-              enabled: false
+              enabled: true
 
           indicators:
             ma:
@@ -100,7 +113,7 @@ jobs:
 
           news:
             enabled: true
-            max_articles: 8
+            max_articles: 10
             cache_duration: 300
             fetch:
               timeout: 15
@@ -118,14 +131,6 @@ jobs:
               - name: "凤凰网财经"
                 type: "rss"
                 url: "https://finance.ifeng.com/rss/index.xml"
-                enabled: true
-              - name: "华尔街见闻"
-                type: "html"
-                url: "https://r.jina.ai/http://wallstreetcn.com/"
-                parser: "markdown_links"
-                link_contains:
-                  - "wallstreetcn.com/articles"
-                  - "wallstreetcn.com/livenews"
                 enabled: true
 
           notification:
@@ -163,34 +168,58 @@ jobs:
             backup_count: 5
           EOF
 
-      - name: Create keywords file if missing
+      - name: Create keywords file
         run: |
           mkdir -p config
-          if [ ! -f config/keywords.txt ]; then
-            cat > config/keywords.txt <<'EOF'
+          cat > config/keywords.txt <<'EOF'
+          # 贵金属相关
           gold
+          silver
           xauusd
+          xagusd
           黄金
+          白银
+          贵金属
+          
+          # 宏观经济
           美联储
+          Fed
           通胀
-          利率
-          避险
-          美元
-          非农
           CPI
+          利率
+          非农
+          NFP
+          
+          # 市场因素
+          美元
+          避险
+          地缘政治
+          央行
+          加息
+          降息
+          
+          # 相关资产
+          美债
+          实际利率
+          美元指数
+          DXY
           EOF
-          fi
 
-      - name: Run gold analysis
+      - name: Run analysis
         run: |
           mkdir -p output/reports output/logs data
-          python src/main.py --instrument gold
+          if [ "${{ github.event.inputs.instrument }}" != "" ]; then
+            python src/main.py --instrument ${{ github.event.inputs.instrument }}
+          else
+            python src/main.py
+          fi
 
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gold-analysis-output
+          name: analysis-reports-${{ github.run_id }}
           path: |
-            output/reports
-            output/logs
+            output/reports/*.md
+            output/logs/*.log
+          retention-days: 30
