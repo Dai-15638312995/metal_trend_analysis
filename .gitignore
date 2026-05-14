@@ -43,11 +43,11 @@ env/
 .DS_Store
 Thumbs.db
 
-# Project Specific - Data files
-data/
+# Project Specific - keep raw data for review
+# data/
 
-# Output files (generated content)
-output/
+# Output files - keep reports and logs, ignore raw data
+output/raw/
 
 # Config with real credentials
 config/config.yaml

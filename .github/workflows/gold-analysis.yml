@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -208,13 +210,24 @@ jobs:
       - name: Run analysis
         run: |
           mkdir -p output/reports output/logs data
+          # 将运行日志同时输出到文件
           if [ "${{ github.event.inputs.instrument }}" != "" ]; then
-            python src/main.py --instrument ${{ github.event.inputs.instrument }}
+            python src/main.py --instrument ${{ github.event.inputs.instrument }} 2>&1 | tee output/logs/run_$(date +%Y%m%d_%H%M%S).log
           else
-            python src/main.py
+            python src/main.py 2>&1 | tee output/logs/run_$(date +%Y%m%d_%H%M%S).log
           fi
 
-      - name: Upload reports
+      - name: Commit logs and reports to repository
+        if: always()
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add output/reports/ output/logs/ data/raw/ || true
+          # 只有有变更时才提交
+          git diff --cached --quiet || git commit -m "📊 自动更新: 分析报告和运行日志 $(date +%Y-%m-%d_%H:%M)"
+          git push
+
+      - name: Upload reports (backup)
         if: always()
         uses: actions/upload-artifact@v4
         with:
