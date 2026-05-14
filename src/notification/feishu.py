@@ -382,33 +382,52 @@ class FeishuNotifier(BaseNotifier):
 
             entry_range = trading_advice.get('entry_range', (0, 0))
             if isinstance(entry_range, (list, tuple)) and len(entry_range) == 2:
-                lines.append(f"• 入场区间: ${entry_range[0]:.2f} ~ ${entry_range[1]:.2f}")
+                try:
+                    er0 = float(entry_range[0]) if entry_range[0] else 0
+                    er1 = float(entry_range[1]) if entry_range[1] else 0
+                    lines.append(f"• 入场区间: ${er0:.2f} ~ ${er1:.2f}")
+                except (ValueError, TypeError):
+                    lines.append(f"• 入场区间: {entry_range}")
 
             lines.append("")
             lines.append("**🛡️ 止损设置**")
             stop_loss = trading_advice.get('stop_loss', {})
             if stop_loss:
-                lines.append(f"• 激进止损: ${stop_loss.get('aggressive', 0):.2f}")
-                lines.append(f"• 标准止损: ${stop_loss.get('standard', 0):.2f}")
-                lines.append(f"• 结构止损: ${stop_loss.get('structure', 0):.2f}")
+                try:
+                    lines.append(f"• 激进止损: ${float(stop_loss.get('aggressive', 0)):.2f}")
+                    lines.append(f"• 标准止损: ${float(stop_loss.get('standard', 0)):.2f}")
+                    lines.append(f"• 结构止损: ${float(stop_loss.get('structure', 0)):.2f}")
+                except (ValueError, TypeError):
+                    pass
 
             sl_zone = trading_advice.get('stop_loss_zone', (0, 0))
             if isinstance(sl_zone, (list, tuple)) and len(sl_zone) == 2:
-                lines.append(f"• 扫损区: ${sl_zone[0]:.2f} ~ ${sl_zone[1]:.2f}")
+                try:
+                    sz0 = float(sl_zone[0]) if sl_zone[0] else 0
+                    sz1 = float(sl_zone[1]) if sl_zone[1] else 0
+                    lines.append(f"• 扫损区: ${sz0:.2f} ~ ${sz1:.2f}")
+                except (ValueError, TypeError):
+                    pass
 
             lines.append("")
             lines.append("**🎯 目标位**")
             take_profit = trading_advice.get('take_profit', {})
             if take_profit:
-                lines.append(f"• TP1: ${take_profit.get('tp1', 0):.2f} (减仓30-50%)")
-                lines.append(f"• TP2: ${take_profit.get('tp2', 0):.2f} (再减仓30%)")
-                tp3 = take_profit.get('tp3')
-                if tp3:
-                    lines.append(f"• TP3: ${tp3:.2f} (全部止盈)")
+                try:
+                    lines.append(f"• TP1: ${float(take_profit.get('tp1', 0)):.2f} (减仓30-50%)")
+                    lines.append(f"• TP2: ${float(take_profit.get('tp2', 0)):.2f} (再减仓30%)")
+                    tp3 = take_profit.get('tp3')
+                    if tp3:
+                        lines.append(f"• TP3: ${float(tp3):.2f} (全部止盈)")
+                except (ValueError, TypeError):
+                    pass
 
             rr = trading_advice.get('risk_reward_ratio', 0)
             if rr:
-                lines.append(f"• 盈亏比: 1:{rr:.2f}")
+                try:
+                    lines.append(f"• 盈亏比: 1:{float(rr):.2f}")
+                except (ValueError, TypeError):
+                    lines.append(f"• 盈亏比: {rr}")
 
             lines.append("")
             invalidation = trading_advice.get('invalidation_condition', '')

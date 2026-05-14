@@ -258,23 +258,36 @@ class ReportGenerator:
 
             # 入场区间
             entry_range = trading_advice.get('entry_range', (0, 0))
-            report_lines.append(f"**建议入场区间**: ${entry_range[0]:.2f} - ${entry_range[1]:.2f}")
+            try:
+                er0 = float(entry_range[0]) if entry_range[0] else 0
+                er1 = float(entry_range[1]) if entry_range[1] else 0
+                report_lines.append(f"**建议入场区间**: ${er0:.2f} - ${er1:.2f}")
+            except (ValueError, TypeError):
+                report_lines.append(f"**建议入场区间**: {entry_range}")
             report_lines.append("")
 
             # 止损设置
             report_lines.append("### 4.3 止损设置")
             report_lines.append("")
             stop_loss = trading_advice.get('stop_loss', {})
-            report_lines.append(f"| 止损类型 | 价格 | 说明 |")
-            report_lines.append(f"|---------|------|------|")
-            report_lines.append(f"| 激进止损 | ${stop_loss.get('aggressive', 0):.2f} | 较小止损，适合短线 |")
-            report_lines.append(f"| 标准止损 | ${stop_loss.get('standard', 0):.2f} | 平衡风险收益 |")
-            report_lines.append(f"| 结构止损 | ${stop_loss.get('structure', 0):.2f} | 关键位下方，适合波段 |")
+            try:
+                report_lines.append(f"| 止损类型 | 价格 | 说明 |")
+                report_lines.append(f"|---------|------|------|")
+                report_lines.append(f"| 激进止损 | ${float(stop_loss.get('aggressive', 0)):.2f} | 较小止损，适合短线 |")
+                report_lines.append(f"| 标准止损 | ${float(stop_loss.get('standard', 0)):.2f} | 平衡风险收益 |")
+                report_lines.append(f"| 结构止损 | ${float(stop_loss.get('structure', 0)):.2f} | 关键位下方，适合波段 |")
+            except (ValueError, TypeError):
+                pass
             report_lines.append("")
 
             # 扫损区
             sl_zone = trading_advice.get('stop_loss_zone', (0, 0))
-            report_lines.append(f"**扫损区**: ${sl_zone[0]:.2f} - ${sl_zone[1]:.2f}")
+            try:
+                sz0 = float(sl_zone[0]) if sl_zone[0] else 0
+                sz1 = float(sl_zone[1]) if sl_zone[1] else 0
+                report_lines.append(f"**扫损区**: ${sz0:.2f} - ${sz1:.2f}")
+            except (ValueError, TypeError):
+                report_lines.append(f"**扫损区**: {sl_zone}")
             report_lines.append("> ⚠️ 价格进入此区间可能触发止损，需密切关注")
             report_lines.append("")
 
@@ -282,17 +295,24 @@ class ReportGenerator:
             report_lines.append("### 4.4 目标位")
             report_lines.append("")
             take_profit = trading_advice.get('take_profit', {})
-            report_lines.append(f"| 目标 | 价格 | 建议操作 |")
-            report_lines.append(f"|-----|------|---------|")
-            report_lines.append(f"| TP1 (第一目标) | ${take_profit.get('tp1', 0):.2f} | 减仓 30-50% |")
-            report_lines.append(f"| TP2 (第二目标) | ${take_profit.get('tp2', 0):.2f} | 再减仓 30% |")
-            tp3 = take_profit.get('tp3')
-            if tp3:
-                report_lines.append(f"| TP3 (第三目标) | ${tp3:.2f} | 剩余仓位持有或全部止盈 |")
+            try:
+                report_lines.append(f"| 目标 | 价格 | 建议操作 |")
+                report_lines.append(f"|-----|------|---------|")
+                report_lines.append(f"| TP1 (第一目标) | ${float(take_profit.get('tp1', 0)):.2f} | 减仓 30-50% |")
+                report_lines.append(f"| TP2 (第二目标) | ${float(take_profit.get('tp2', 0)):.2f} | 再减仓 30% |")
+                tp3 = take_profit.get('tp3')
+                if tp3:
+                    report_lines.append(f"| TP3 (第三目标) | ${float(tp3):.2f} | 剩余仓位持有或全部止盈 |")
+            except (ValueError, TypeError):
+                pass
             report_lines.append("")
 
             # 盈亏比
-            report_lines.append(f"**盈亏比**: 1:{trading_advice.get('risk_reward_ratio', 0):.2f}")
+            try:
+                rr = float(trading_advice.get('risk_reward_ratio', 0))
+                report_lines.append(f"**盈亏比**: 1:{rr:.2f}")
+            except (ValueError, TypeError):
+                report_lines.append(f"**盈亏比**: {trading_advice.get('risk_reward_ratio', 'N/A')}")
             report_lines.append("")
 
             # 作废条件

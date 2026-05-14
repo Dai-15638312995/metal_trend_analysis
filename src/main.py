@@ -67,14 +67,14 @@ def initialize_analyzers(config: Dict[str, Any], logger) -> Tuple[Dict[str, Any]
         analyzers['pattern_recognizer'] = PatternRecognizer()
         logger.info("Pattern recognizer initialized successfully")
 
-        # Trading advisor
-        analyzers['trading_advisor'] = TradingAdvisor()
-        logger.info("Trading advisor initialized successfully")
-
-        # LLM analyzer
-        llm_config = config.get('llm', {})
+        # LLM analyzer (must be before TradingAdvisor)
+        llm_config = config.get('llm', {})python src/main.py --instrument gold
         analyzers['llm_analyzer'] = LLMAnalyzer(llm_config)
         logger.info("LLM analyzer initialized successfully")
+
+        # Trading advisor (with LLM analyzer for AI-powered advice)
+        analyzers['trading_advisor'] = TradingAdvisor(llm_analyzer=analyzers['llm_analyzer'])
+        logger.info("Trading advisor initialized successfully")
 
         # Report generator
         reports_config = config.get('reports', {})
@@ -293,15 +293,28 @@ def analyze_instrument(
         logger.info(f"Current price: ${quote_data.get('price')}")
         logger.info(f"Change: {quote_data.get('change')} ({quote_data.get('change_percent')}%)")
 
-        # Get K-line data
+        # Get K-line data (multi-timeframe)
         logger.info(f"Fetching K-line data for {symbol}...")
-        kline_data = stooq_client.get_kline(stooq_symbol, timeframe)
+
+        # 获取多时间周期数据（用于交易建议）
+        multi_timeframes = ['5m', '15m', '30m', '1h', '4h', '1d']
+        logger.info(f"Fetching multi-timeframe data: {multi_timeframes}")
+        multi_timeframe_data = stooq_client.get_multi_timeframe_data(stooq_symbol, multi_timeframes)
+
+        # 主时间周期数据
+        kline_data = multi_timeframe_data.get(timeframe) if multi_timeframe_data else None
+        if kline_data is None or kline_data.empty:
+            # 回退到单时间周期获取
+            kline_data = stooq_client.get_kline(stooq_symbol, timeframe)
 
         if kline_data.empty:
             logger.error(f"Failed to fetch K-line data for {symbol}")
             return None
 
-        logger.info(f"Fetched {len(kline_data)} K-line records")
+        logger.info(f"Fetched {len(kline_data)} K-line records for main timeframe ({timeframe})")
+        if multi_timeframe_data:
+            for tf, df in multi_timeframe_data.items():
+                logger.info(f"  - {tf}: {len(df)} records")
 
         # Save raw data
         stooq_client.save_raw_data(kline_data, symbol, timeframe)
@@ -339,8 +352,8 @@ def analyze_instrument(
 
         technical_result['patterns'] = patterns
 
-        # Generate trading advice
-        logger.info("Generating trading advice...")
+        # Generate trading advice (with multi-timeframe data)
+        logger.info("Generating trading advice with multi-timeframe analysis...")
         current_price = quote_data.get('price', 0)
         advice = trading_advisor.generate_advice(
             kline_data,
@@ -348,14 +361,15 @@ def analyze_instrument(
             support_levels,
             resistance_levels,
             current_price,
-            timeframe
+            timeframe,
+            multi_timeframe_data=multi_timeframe_data
         )
         trading_advice_dict = trading_advisor.to_dict(advice)
-        logger.info(f"Trading direction: {advice.direction.value}")
-        logger.info(f"Entry range: ${advice.entry_range[0]:.2f} - ${advice.entry_range[1]:.2f}")
-        logger.info(f"Stop loss (standard): ${advice.stop_loss_standard:.2f}")
-        logger.info(f"Take profit 1: ${advice.take_profit_1:.2f}")
-        logger.info(f"Confidence: {advice.confidence_score}%")
+        logger.info(f"Trading direction: {advice.get('direction', '未知')}")
+        logger.info(f"Entry range: ${advice['entry_range'][0]:.2f} - ${advice['entry_range'][1]:.2f}")
+        logger.info(f"Stop loss (standard): ${advice['stop_loss']['standard']:.2f}")
+        logger.info(f"Take profit 1: ${advice['take_profit']['tp1']:.2f}")
+        logger.info(f"Confidence: {advice.get('confidence_score', 0)}%")
 
         # LLM comprehensive analysis
         logger.info("Performing LLM comprehensive analysis...")

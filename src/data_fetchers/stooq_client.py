@@ -252,6 +252,85 @@ class StooqClient:
         except Exception as e:
             raise DataFetchError(f"Unexpected error getting K-line data for {symbol}: {e}")
 
+    def get_multi_timeframe_data(
+        self,
+        symbol: str,
+        timeframes: list = None,
+        region: str | None = None,
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        获取多时间周期的K线数据
+
+        Args:
+            symbol: 交易品种代码
+            timeframes: 时间周期列表，如 ['5m', '15m', '30m', '1h', '4h', '1d']
+            region: 地区代码
+
+        Returns:
+            各时间周期的DataFrame字典
+        """
+        if timeframes is None:
+            timeframes = ['1d']
+
+        result = {}
+        yf_ticker = self._get_yf_ticker(symbol)
+
+        # Yahoo Finance 支持的interval和对应period
+        timeframe_config = {
+            '1m': {'interval': '1m', 'period': '7d', 'count': 1000},
+            '5m': {'interval': '5m', 'period': '1mo', 'count': 1000},
+            '15m': {'interval': '15m', 'period': '1mo', 'count': 1000},
+            '30m': {'interval': '30m', 'period': '1mo', 'count': 1000},
+            '1h': {'interval': '1h', 'period': '3mo', 'count': 500},
+            '4h': {'interval': '1h', 'period': '6mo', 'count': 500},  # yfinance没有4h，用1h聚合
+            '1d': {'interval': '1d', 'period': '1y', 'count': 200},
+            '1w': {'interval': '1wk', 'period': '2y', 'count': 100},
+        }
+
+        for tf in timeframes:
+            try:
+                config = timeframe_config.get(tf, timeframe_config['1d'])
+
+                # 对于4h，需要从1h数据聚合
+                if tf == '4h':
+                    df_1h = self._fetch_data(yf_ticker, period=config['period'], interval='1h')
+                    if not df_1h.empty:
+                        df = self._resample_to_4h(df_1h)
+                    else:
+                        df = df_1h
+                else:
+                    df = self._fetch_data(yf_ticker, period=config['period'], interval=config['interval'])
+
+                if not df.empty:
+                    # 限制数据量
+                    if len(df) > config['count']:
+                        df = df.tail(config['count'])
+                    result[tf] = df
+                    self.logger.info(f"Fetched {tf} data: {len(df)} records")
+                else:
+                    self.logger.warning(f"No data for {tf}")
+
+            except Exception as e:
+                self.logger.error(f"Failed to fetch {tf} data: {e}")
+                continue
+
+        return result
+
+    def _resample_to_4h(self, df_1h: pd.DataFrame) -> pd.DataFrame:
+        """将1小时数据聚合为4小时数据"""
+        try:
+            df_4h = pd.DataFrame()
+            df_4h['open'] = df_1h['open'].resample('4H').first()
+            df_4h['high'] = df_1h['high'].resample('4H').max()
+            df_4h['low'] = df_1h['low'].resample('4H').min()
+            df_4h['close'] = df_1h['close'].resample('4H').last()
+            df_4h['volume'] = df_1h['volume'].resample('4H').sum() if 'volume' in df_1h.columns else 0
+            df_4h.dropna(inplace=True)
+            return df_4h
+        except Exception as e:
+            self.logger.error(f"Error resampling to 4h: {e}")
+            return df_1h
+
     def save_raw_data(self, df: pd.DataFrame, symbol: str, timeframe: str) -> Optional[Path]:
         try:
             if df.empty:
