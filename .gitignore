@@ -43,8 +43,8 @@ env/
 .DS_Store
 Thumbs.db
 
-# Project Specific - keep raw data for review
-# data/
+# Project Specific - Data files
+data/
 
 # Output files - keep reports and logs, ignore raw data
 output/raw/
