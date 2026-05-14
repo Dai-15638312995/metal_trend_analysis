@@ -5,7 +5,7 @@ on:
     # 北京时间 09:00 和 21:00 运行（周一到周五）
     # UTC 01:00 = 北京时间 09:00
     # UTC 13:00 = 北京时间 21:00
-    - cron: '0 1,13 * * 1-5'
+    - cron: '0 */1,1,13 * * 1-5'
   workflow_dispatch:
     inputs:
       instrument:
