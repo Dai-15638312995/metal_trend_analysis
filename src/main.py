@@ -68,7 +68,7 @@ def initialize_analyzers(config: Dict[str, Any], logger) -> Tuple[Dict[str, Any]
         logger.info("Pattern recognizer initialized successfully")
 
         # LLM analyzer (must be before TradingAdvisor)
-        llm_config = config.get('llm', {})python src/main.py --instrument gold
+        llm_config = config.get('llm', {})
         analyzers['llm_analyzer'] = LLMAnalyzer(llm_config)
         logger.info("LLM analyzer initialized successfully")
 
