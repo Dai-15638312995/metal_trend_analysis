@@ -123,7 +123,9 @@ class TradingAdvisor:
 
             # 先进行多周期技术分析，提取关键信息
             self.logger.info("【步骤1】多周期技术分析...")
-            multi_tf_analysis = self._analyze_multi_timeframe(multi_timeframe_data, current_price)
+            multi_tf_analysis = self._analyze_multi_timeframe(
+                multi_timeframe_data, current_price, technical_data
+            )
 
             # 构建提示词（包含多周期分析结果）
             self.logger.info("【步骤2】构建 AI 提示词...")
@@ -208,25 +210,43 @@ class TradingAdvisor:
     def _analyze_multi_timeframe(
         self,
         multi_timeframe_data: Dict[str, pd.DataFrame],
-        current_price: float
+        current_price: float,
+        technical_data: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """
         对多周期数据进行预分析，提取关键信息
-        减少传给 AI 的数据量，提高分析质量
+        重点：使用 technical_data 中的趋势作为主要方向
         """
         result = {
             'trends': {},
             'key_levels': {'supports': [], 'resistances': []},
             'signals': {},
-            'alignment': 'neutral'
+            'alignment': 'neutral',
+            'primary_direction': 'neutral'
         }
+
+        # ===== 1. 获取主要趋势方向（来自 technical_data）=====
+        if technical_data:
+            primary_trend = technical_data.get('trend', 'neutral')
+            macd_signal = technical_data.get('macd_signal', 'neutral')
+            rsi = technical_data.get('rsi')
+
+            result['primary_direction'] = primary_trend
+            result['macd_signal'] = macd_signal
+            result['rsi'] = rsi
+
+            self.logger.info("")
+            self.logger.info("【技术指标趋势（主要方向）】")
+            self.logger.info(f"  日线趋势: {primary_trend} (MACD: {macd_signal})")
+            if rsi:
+                self.logger.info(f"  RSI: {rsi:.1f}")
+            self.logger.info("")
 
         if not multi_timeframe_data:
             self.logger.warning("没有多周期数据，跳过分析")
             return result
 
-        self.logger.info("")
-        self.logger.info("【多周期趋势分析】")
+        self.logger.info("【多周期趋势分析（辅助参考）】")
         self.logger.info("-" * 40)
 
         tf_order = ['1d', '4h', '1h', '30m', '15m', '5m']
@@ -302,8 +322,8 @@ class TradingAdvisor:
         self.logger.info("")
 
         # 去重并排序关键价位
-        result['key_levels']['supports'] = sorted(list(set(result['key_levels']['supports'])), reverse=True)[:3]
-        result['key_levels']['resistances'] = sorted(list(set(result['key_levels']['resistances'])))[:3]
+        result['key_levels']['supports'] = sorted(list(set(result['key_levels']['supports'])), reverse=True)[:5]
+        result['key_levels']['resistances'] = sorted(list(set(result['key_levels']['resistances'])))[:5]
 
         return result
 
@@ -362,58 +382,19 @@ class TradingAdvisor:
         timeframe: str,
         multi_tf_analysis: Dict[str, Any]
     ) -> str:
-        """构建简化的交易建议提示词"""
+        """构建交易建议提示词 - 基于技术指标确定方向"""
         lines = []
 
         lines.append("## 多周期交易分析")
         lines.append("")
 
-        # 1. 当前价格
-        lines.append(f"**当前价格**: ${current_price:.2f}")
-        lines.append("")
+        # ====== 1. 主要方向（来自技术指标，必须遵循）======
+        lines.append("### ⚠️ 【主要方向 - 必须遵循】")
+        primary_trend = multi_tf_analysis.get('primary_direction', technical_data.get('trend', 'neutral'))
+        primary_trend_text = {"bullish": "🔴 看涨", "bearish": "🟢 看跌", "neutral": "⚪ 中性"}.get(primary_trend, primary_trend)
+        lines.append(f"**日线趋势**: {primary_trend_text}")
 
-        # 2. 多周期趋势汇总
-        lines.append("**多周期趋势汇总**:")
-        trends = multi_tf_analysis.get('trends', {})
-        trend_icons = {'bullish': '🔴 看涨', 'bearish': '🟢 看跌', 'neutral': '⚪ 中性'}
-
-        for tf_name in ['日线', '4小时', '1小时', '30分钟', '15分钟', '5分钟']:
-            if tf_name in trends:
-                trend = trends[tf_name]
-                lines.append(f"  - {tf_name}: {trend_icons.get(trend, trend)}")
-
-        # 多周期一致性
-        alignment = multi_tf_analysis.get('alignment', 'neutral')
-        alignment_text = {
-            'strong_bullish': '强多头共振 ✅✅',
-            'strong_bearish': '强空头共振 ✅✅',
-            'bullish': '多头占优 ✅',
-            'bearish': '空头占优 ✅',
-            'neutral': '周期冲突/震荡 ⚠️'
-        }.get(alignment, alignment)
-
-        lines.append(f"")
-        lines.append(f"**多周期一致性**: {alignment_text}")
-        lines.append("")
-
-        # 3. 关键价位
-        key_levels = multi_tf_analysis.get('key_levels', {})
-        supports = key_levels.get('supports', [])
-        resistances = key_levels.get('resistances', [])
-
-        if supports:
-            lines.append(f"**关键支撑位**: {', '.join([f'${s:.2f}' for s in supports])}")
-        if resistances:
-            lines.append(f"**关键阻力位**: {', '.join([f'${r:.2f}' for r in resistances])}")
-        lines.append("")
-
-        # 4. 日线技术指标
-        lines.append("**日线技术指标**:")
-        trend = technical_data.get('trend', 'neutral')
-        trend_text = {"bullish": "看涨", "bearish": "看跌", "neutral": "中性"}.get(trend, trend)
-        lines.append(f"  - 趋势: {trend_text}")
-
-        macd_signal = technical_data.get('macd_signal', 'neutral')
+        macd_signal = multi_tf_analysis.get('macd_signal', technical_data.get('macd_signal', 'neutral'))
         macd_text = {
             "golden_cross": "金叉",
             "death_cross": "死叉",
@@ -421,42 +402,105 @@ class TradingAdvisor:
             "bearish": "空头",
             "neutral": "中性"
         }.get(macd_signal, macd_signal)
-        lines.append(f"  - MACD: {macd_text}")
+        lines.append(f"**MACD信号**: {macd_text}")
 
-        rsi = technical_data.get('rsi')
+        rsi = multi_tf_analysis.get('rsi', technical_data.get('rsi'))
         if rsi:
-            rsi_text = "超买" if rsi > 70 else "超卖" if rsi < 30 else "正常"
-            lines.append(f"  - RSI: {rsi:.1f} ({rsi_text})")
+            rsi_text = "超买 ⚠️" if rsi > 70 else "超卖 ⚠️" if rsi < 30 else "正常"
+            lines.append(f"**RSI**: {rsi:.1f} ({rsi_text})")
+
+        # 确定主要方向
+        main_direction = "neutral"
+        if primary_trend == "bullish" or macd_signal in ["golden_cross", "bullish"]:
+            main_direction = "做多"
+        elif primary_trend == "bearish" or macd_signal in ["death_cross", "bearish"]:
+            main_direction = "做空"
+
+        lines.append("")
+        lines.append(f"**【必须遵循的主要方向】**: {main_direction}")
+        lines.append("※ 所有交易建议必须与上述技术指标方向一致")
+        lines.append("")
+
+        # ====== 2. 当前价格和位置 ======
+        lines.append("### 📊 当前行情")
+        lines.append(f"- 当前价格: ${current_price:.2f}")
+        lines.append("")
+
+        # ====== 3. 多周期趋势辅助参考 ======
+        lines.append("### 📈 多周期趋势（辅助参考）")
+        trends = multi_tf_analysis.get('trends', {})
+        trend_icons = {'bullish': '🔴', 'bearish': '🟢', 'neutral': '⚪'}
+
+        for tf_name in ['日线', '4小时', '1小时', '30分钟', '15分钟', '5分钟']:
+            if tf_name in trends:
+                trend = trends[tf_name]
+                lines.append(f"  {tf_name}: {trend_icons.get(trend, '⚪')} {trend}")
+
+        alignment = multi_tf_analysis.get('alignment', 'neutral')
+        alignment_text = {
+            'strong_bullish': '强多头共振 ✅✅',
+            'strong_bearish': '强空头共振 ✅✅',
+            'bullish': '多头占优 ✅',
+            'bearish': '空头占优 ✅',
+            'neutral': '周期不一致 ⚠️'
+        }.get(alignment, alignment)
+        lines.append(f"**多周期一致性**: {alignment_text}")
+        lines.append("")
+
+        # ====== 4. 关键价位 ======
+        lines.append("### 🎯 关键价位")
+        key_levels = multi_tf_analysis.get('key_levels', {})
+        supports = key_levels.get('supports', [])
+        resistances = key_levels.get('resistances', [])
+
+        if supports:
+            lines.append(f"**支撑位**: {', '.join([f'${s:.2f}' for s in supports])}")
+        if resistances:
+            lines.append(f"**阻力位**: {', '.join([f'${r:.2f}' for r in resistances])}")
+
+        # 添加支撑阻力分析
+        below_supports = [s for s in supports if s < current_price]
+        above_supports = [s for s in supports if s >= current_price]
+        above_resistances = [r for r in resistances if r > current_price]
+        below_resistances = [r for r in resistances if r <= current_price]
+
+        if main_direction == "做多" and below_supports:
+            nearest_support = max(below_supports)
+            lines.append(f"**最近下方支撑**: ${nearest_support:.2f} (回调目标)")
+            lines.append(f"**入场建议**: 等价格回调到 ${nearest_support:.2f} 附近入场做多")
+        elif main_direction == "做空" and above_resistances:
+            nearest_resistance = min(above_resistances)
+            lines.append(f"**最近上方阻力**: ${nearest_resistance:.2f} (反弹目标)")
+            lines.append(f"**入场建议**: 等价格反弹到 ${nearest_resistance:.2f} 附近入场做空")
 
         lines.append("")
 
-        # 5. 交易建议要求
-        lines.append("**请给出交易建议**:")
+        # ====== 5. 交易建议要求 ======
+        lines.append("### 📋 交易建议要求")
         lines.append("")
-        lines.append(f"当前价格: ${current_price:.2f}")
+        lines.append("**【必须遵守的规则】**:")
+        lines.append("1. **方向必须与技术指标一致** - MACD死叉时不能做多，MACD金叉时不能做空")
+        lines.append("2. **止损距离 10-30 美元**")
+        lines.append("3. **盈亏比 ≥ 1:2**")
+        lines.append("4. **做多时**: 入场价 > 止损价 < 当前价")
+        lines.append("5. **做空时**: 入场价 < 止损价 > 当前价")
         lines.append("")
-        lines.append("基于以上多周期分析，判断：")
-        lines.append("1. 主要趋势方向（由日线/4小时决定）")
-        lines.append("2. 当前位置（是否处于关键支撑/阻力位）")
-        lines.append("3. 入场策略（顺大势，逆小势回调入场）")
+        lines.append("**【入场价位分析要求】**:")
+        lines.append("- 必须分析当前价格在支撑/阻力位中的位置")
+        lines.append("- 做多时：给出回调支撑位作为入场参考")
+        lines.append("- 做空时：给出反弹阻力位作为入场参考")
+        lines.append("- 如果当前价已在支撑/阻力位附近，给出具体入场价")
         lines.append("")
-        lines.append("**重要规则**:")
-        lines.append("- 止损距离控制在 10-30 美元（短线交易）")
-        lines.append("- 盈亏比至少 1:2 以上")
-        lines.append("- 做多时：止损在入场价下方，目标位在入场价上方")
-        lines.append("- 做空时：止损在入场价上方，目标位在入场价下方")
-        lines.append("- 所有价格必须基于当前价格 ${:.2f} 附近合理设置".format(current_price))
-        lines.append("")
-        lines.append("输出格式（纯文本，不要JSON）:")
+        lines.append("输出格式（纯文本）:")
         lines.append("""
-方向: 做多/做空/观望
-理由: [多周期分析结论]
-入场: [具体入场价位，必须接近当前价格]
-止损: [止损价位，做多时低于入场价，做空时高于入场价，距离10-30美元]
-目标1: [第一目标位，做多时高于入场价，做空时低于入场价]
+方向: 做多/做空/观望（必须与技术指标方向一致）
+理由: [分析当前价格位置和技术指标信号]
+入场: [具体入场价位和分析，如：回调至$4560支撑位入场做多]
+止损: [止损价位]
+目标1: [第一目标位]
 目标2: [第二目标位]
 目标3: [第三目标位]
-仓位: [轻仓/标准/重仓 及理由]
+仓位: [轻仓/标准/重仓]
 风险: [高/中/低]
 """)
 
