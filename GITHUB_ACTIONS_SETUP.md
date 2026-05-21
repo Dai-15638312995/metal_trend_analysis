@@ -82,6 +82,7 @@ git push -u origin main
 
 | Secret Name | Value | 说明 |
 |-------------|-------|------|
+| `TWELVE_DATA_API_KEY` | `0e10f7b9f25744feb0036623c9cd0d5d` | Twelve Data API Key (现货黄金数据) |
 | `LLM_API_KEY` | `sk-54f9bcd598b244ecbefc4d8b7fc19a93` | 通义千问 API Key |
 | `LLM_BASE_URL` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 通义千问 API 地址 |
 | `LLM_MODEL_NAME` | `qwen-max` | 模型名称 |

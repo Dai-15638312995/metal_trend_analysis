@@ -43,6 +43,8 @@ jobs:
       - name: Create .env
         run: |
           cat > .env <<EOF
+          DATA_SOURCE=twelve_data
+          TWELVE_DATA_API_KEY=${{ secrets.TWELVE_DATA_API_KEY }}
           LLM_API_KEY=${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL=${{ secrets.LLM_BASE_URL }}
           LLM_MODEL_NAME=${{ secrets.LLM_MODEL_NAME }}
@@ -63,6 +65,12 @@ jobs:
           mkdir -p config
           cat > config/config.yaml <<'EOF'
           api:
+            twelve_data:
+              base_url: "https://api.twelvedata.com"
+              api_key: "${TWELVE_DATA_API_KEY}"
+              timeout: 20
+              max_requests_per_minute: 4
+              default_kline_count: 200
             stooq:
               base_url: "https://stooq.com/q/d/l/"
               timeout: 20
@@ -91,7 +99,7 @@ jobs:
               name: "国际现货白银"
               region: "GB"
               stooq_symbol: "xagusd"
-              enabled: true
+              enabled: false  # Twelve Data 免费版不支持 XAG/USD
 
           indicators:
             ma:
