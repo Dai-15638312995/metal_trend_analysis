@@ -1,6 +1,18 @@
 
-# Stooq 免费数据源配置（仅日线，支持周/月线重采样）
+# 数据源配置
+# 可选: "twelve_data" (现货黄金, 默认), "yfinance" (黄金期货 GC=F)
 api:
+  # Twelve Data 配置 (获取现货黄金 XAU/USD)
+  # 申请地址: https://twelvedata.com
+  # 免费版每月 800 次请求
+  twelve_data:
+    base_url: "https://api.twelvedata.com"
+    api_key: "${TWELVE_DATA_API_KEY}"
+    timeout: 20
+    max_requests_per_minute: 4  # 保守限制，避免超限
+    default_kline_count: 200
+
+  # Stooq 免费数据源配置（仅日线，支持周/月线重采样）
   stooq:
     base_url: "https://stooq.com/q/d/l/"
     timeout: 20
@@ -31,7 +43,7 @@ instruments:
     name: "国际现货白银"
     region: "GB"
     stooq_symbol: "xagusd"
-    enabled: true
+    enabled: false  # Twelve Data 免费版不支持 XAG/USD
 
 # 技术指标参数
 indicators:

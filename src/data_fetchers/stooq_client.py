@@ -17,9 +17,10 @@ from ..utils.common import with_retry, validate_config
 
 
 # Yahoo Finance ticker mapping
+# 使用外汇现货代码获取现货黄金/白银价格
 TICKER_MAP = {
-    "xauusd": "GC=F",   # Gold Futures
-    "xagusd": "SI=F",   # Silver Futures
+    "xauusd": "XAUUSD=X",   # 现货黄金现货 (Gold Spot)
+    "xagusd": "XAGUSD=X",   # 现货白银现货 (Silver Spot)
 }
 
 

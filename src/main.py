@@ -2,6 +2,7 @@
 Metal Trend Analysis Tool - Main Program
 """
 import sys
+import os
 import argparse
 from pathlib import Path
 from datetime import datetime
@@ -53,10 +54,29 @@ def initialize_analyzers(config: Dict[str, Any], logger) -> Tuple[Dict[str, Any]
     analyzers = {}
 
     try:
-        # Stooq client
-        stooq_config = config.get('api', {}).get('stooq', {})
-        analyzers['stooq_client'] = StooqClient(stooq_config)
-        logger.info("Stooq client initialized successfully")
+        # 根据配置选择数据源 (默认使用 Twelve Data 获取现货黄金)
+        data_source = os.getenv('DATA_SOURCE', 'twelve_data').lower()
+
+        if data_source == 'twelve_data':
+            # Twelve Data (获取现货黄金 XAU/USD)
+            from src.data_fetchers.twelve_data_client import TwelveDataClient
+            twelve_config = config.get('api', {}).get('twelve_data', {})
+            twelve_api_key = os.getenv('TWELVE_DATA_API_KEY', '') or twelve_config.get('api_key', '')
+            
+            if not twelve_api_key:
+                logger.warning("TWELVE_DATA_API_KEY not set, falling back to yfinance")
+                data_source = 'yfinance'
+            else:
+                twelve_config['api_key'] = twelve_api_key
+                analyzers['data_client'] = TwelveDataClient(twelve_config)
+                analyzers['data_source'] = 'twelve_data'
+                logger.info("Twelve Data client initialized (XAU/USD spot gold)")
+        else:
+            # yfinance (获取黄金期货 GC=F)
+            stooq_config = config.get('api', {}).get('stooq', {})
+            analyzers['data_client'] = StooqClient(stooq_config)
+            analyzers['data_source'] = 'yfinance'
+            logger.info("Yahoo Finance client initialized (Gold Futures GC=F)")
 
         # Technical analyzer
         indicators_config = config.get('indicators', {})
@@ -273,16 +293,18 @@ def analyze_instrument(
     logger.info("-" * 60)
 
     try:
-        stooq_client = analyzers['stooq_client']
+        data_client = analyzers['data_client']
         technical_analyzer = analyzers['technical_analyzer']
         pattern_recognizer = analyzers['pattern_recognizer']
         trading_advisor = analyzers['trading_advisor']
         llm_analyzer = analyzers['llm_analyzer']
         report_generator = analyzers['report_generator']
+        data_client = analyzers['data_client']
+        data_source = analyzers.get('data_source', 'yfinance')
 
         # Get real-time quote
-        logger.info(f"Fetching real-time quote for {symbol}...")
-        quote_data = stooq_client.get_quote(stooq_symbol, region)
+        logger.info(f"Fetching real-time quote for {symbol} (Data Source: {data_source})...")
+        quote_data = data_client.get_quote(stooq_symbol)
         if quote_data:
             quote_data['symbol'] = symbol
 
@@ -299,13 +321,28 @@ def analyze_instrument(
         # 获取多时间周期数据（用于交易建议）
         multi_timeframes = ['5m', '15m', '30m', '1h', '4h', '1d']
         logger.info(f"Fetching multi-timeframe data: {multi_timeframes}")
-        multi_timeframe_data = stooq_client.get_multi_timeframe_data(stooq_symbol, multi_timeframes)
+
+        # Twelve Data 的时间周期映射 (使用 API 支持的格式)
+        if data_source == 'twelve_data':
+            td_timeframes = ['5min', '15min', '30min', '1h', '4h', '1day']
+            tf_map = dict(zip(multi_timeframes, td_timeframes))
+            multi_timeframe_data = {}
+            for tf in multi_timeframes:
+                try:
+                    df = data_client.get_kline(stooq_symbol, interval=tf_map.get(tf, tf))
+                    if not df.empty:
+                        multi_timeframe_data[tf] = df
+                except Exception as e:
+                    logger.warning(f"Failed to fetch {tf} data: {e}")
+                    continue
+        else:
+            multi_timeframe_data = data_client.get_multi_timeframe_data(stooq_symbol, multi_timeframes)
 
         # 主时间周期数据
         kline_data = multi_timeframe_data.get(timeframe) if multi_timeframe_data else None
         if kline_data is None or kline_data.empty:
             # 回退到单时间周期获取
-            kline_data = stooq_client.get_kline(stooq_symbol, timeframe)
+            kline_data = data_client.get_kline(stooq_symbol, timeframe)
 
         if kline_data.empty:
             logger.error(f"Failed to fetch K-line data for {symbol}")
@@ -317,7 +354,18 @@ def analyze_instrument(
                 logger.info(f"  - {tf}: {len(df)} records")
 
         # Save raw data
-        stooq_client.save_raw_data(kline_data, symbol, timeframe)
+        if hasattr(data_client, 'save_raw_data'):
+            data_client.save_raw_data(kline_data, symbol, timeframe)
+        else:
+            # Twelve Data 没有 save_raw_data 方法，手动保存
+            from pathlib import Path
+            output_dir = Path("data/raw")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{symbol}_{timeframe}_{timestamp}.csv"
+            filepath = output_dir / filename
+            kline_data.to_csv(filepath)
+            logger.info(f"Raw data saved: {filepath}")
 
         # Calculate technical indicators
         logger.info("Calculating technical indicators...")
